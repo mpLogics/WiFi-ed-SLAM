@@ -17,7 +17,9 @@ def read_dataset_file(filename):
         lines = fp.readlines()
 
     # Parse the dataset file
-    data_points = []
+    data_points = {}
+    #dictionary whose key is the bssid and whose and value is another dictionary
+    #that has the x,y coordinates as the key and the signal strength as the value
     for line in lines:
         # Skip empty lines
         if line == '\n':
@@ -40,8 +42,17 @@ def read_dataset_file(filename):
                 signal_strength = float(network[1])
                 ssid = ' '.join(network[2:])
 
-                # Add the data point to the list
-                data_points.append((x, y, signal_strength))
+                try:
+                    # if dictionary is empty, create one  
+                    # otherwise append to the dictionary
+                    data_points[bssid]
+                except KeyError:
+                    data_points[bssid]={}
+                try:
+                    data_points[bssid][(x,y)]
+                except KeyError:
+                    data_points[bssid][(x,y)] = []
+                data_points[bssid][(x,y)].append(signal_strength)
 
     return data_points
 

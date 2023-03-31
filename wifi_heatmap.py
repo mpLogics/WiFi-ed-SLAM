@@ -22,11 +22,16 @@ def read_dataset_file(filename):
             continue
 
         # Parse the line
-        line = line.strip()
-        line = line.split(',')
-        x, y = float(line[0]), float(line[1])
+        line = line.strip() #remove whitespace
+        line = line.split(',') #split on commas to create a list
+        x= float(line[0][1:])
+        y= float(line[1][0:-1])
         timestamp = line[2]
+        print(x)
+        print(y)
+        print(timestamp)
         networks = line[3:]
+        print(networks)
 
         # Parse the networks
         for network in networks:
@@ -59,5 +64,5 @@ def create_heatmap(data_points):
 
 if __name__ == "__main__":
     data_points = read_dataset_file(DATASET_FILENAME)
-    create_heatmap(data_points)
+    # create_heatmap(data_points)
 
