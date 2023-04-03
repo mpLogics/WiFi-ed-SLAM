@@ -79,7 +79,7 @@ def avg_rssi_heatmap(data_points, bssid):
     plt.colorbar(label='Signal Strength (dBm)')
     plt.xlabel('X Coordinate')
     plt.ylabel('Y Coordinate')
-    plt.title('Wi-Fi Signal Strength Heatmap')
+    plt.title(f'Signal Strength at {bssid}')
 
 
 if __name__ == "__main__":
