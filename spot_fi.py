@@ -2,7 +2,7 @@ import pywifi #https://github.com/awkman/pywifi/blob/master/DOC.md
 # from pywifi import const
 import time
 
-from map import read_dataset_file, create_heatmap
+#from map import read_dataset_file, create_heatmap
 
 """
 Collect a dataset of Wi-Fi signal strength in a room
@@ -15,7 +15,7 @@ Procedure:
 Authors: Arthur L.
 """
 
-DATASET_FILENAME = r'C:\Users\Nikitha M V\OneDrive - Umich\Desktop\pythonProject1\HW\dataset1.txt'
+DATASET_FILENAME = r'C:\Users\prmanav\Downloads\dataset_3_4.txt'
 NUM_POINTS_IN_TIME = 5
 
 class WifiNetwork:
