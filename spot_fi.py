@@ -16,7 +16,7 @@ Authors: Arthur L.
 """
 
 DATASET_FILENAME = r'C:\Users\Nikitha M V\OneDrive - Umich\Desktop\pythonProject1\HW\dataset1.txt'
-
+NUM_POINTS_IN_TIME = 5
 
 class WifiNetwork:
     """
@@ -71,26 +71,26 @@ def map_wifi():
     iface = wifi.interfaces()[0] # the Wi-Fi interface which we use to perform Wi-Fi operations (e.g. scan, connect, disconnect, ..
   #  name = iface.name()
 
-    for i in range(10):
-    #while True:
+    
+    while True:
         # Input the location of the scan
         x = float(input("Enter X coordinate: "))
         y = float(input("Enter Y coordinate: "))
         location = (x, y)
-
+        for i in range(NUM_POINTS_IN_TIME):
         # Create a WifiScan object
-        datapoint = WifiScan(time.time(), location)
+            datapoint = WifiScan(time.time(), location)
 
-        # Perform scan as soon as Y coordinate is entered
-        iface.scan() #Trigger the interface to scan APs.
-        time.sleep(4) #scan time for each Wi-Fi interface is variant. Safer to wait 2 ~ 8 sec
-        networks = iface.scan_results()
+            # Perform scan as soon as Y coordinate is entered
+            iface.scan() #Trigger the interface to scan APs.
+            time.sleep(4) #scan time for each Wi-Fi interface is variant. Safer to wait 2 ~ 8 sec
+            networks = iface.scan_results()
 
-        # Add the scan results to the WifiScan object
-        datapoint.add_networks(networks)
+            # Add the scan results to the WifiScan object
+            datapoint.add_networks(networks)
 
-        # Save the WifiScan object to a file
-        datapoint.save_to_file(DATASET_FILENAME)
+            # Save the WifiScan object to a file
+            datapoint.save_to_file(DATASET_FILENAME)
 
 def test_wifi():
     wifi = pywifi.PyWiFi()
@@ -110,6 +110,6 @@ def test_wifi():
 if __name__ == "__main__":
     # test_wifi()
     map_wifi()
-    data_points = read_dataset_file(DATASET_FILENAME)
-    print(data_points)
-    create_heatmap(data_points)
+    #data_points = read_dataset_file(DATASET_FILENAME)
+    #print(data_points)
+    #create_heatmap(data_points)

@@ -7,7 +7,7 @@ Create a heatmap of the Wi-Fi signal strength in a room from a dataset file
 The heatmap is multi-dimensional; each dimension represents a different Access Point (AP)
 Authors: Arthur L.
 """
-DATASET_FILENAME = r'\Users\prmanav\Downloads\dataset.txt'
+DATASET_FILENAME = r'\Users\prmanav\Downloads\dataset_3_4.txt'
 #'C:\Users\Nikitha M V\OneDrive - Umich\Desktop\pythonProject1\HW\dataset.txt'
 
 
@@ -81,11 +81,19 @@ def avg_rssi_heatmap(data_points, bssid):
     plt.ylabel('Y Coordinate')
     plt.title('Wi-Fi Signal Strength Heatmap')
 
-    plt.show()
 
 if __name__ == "__main__":
     data_points = read_dataset_file(DATASET_FILENAME)
     # print(data_points)
-    avg_rssi_heatmap(data_points, "b0:b9:8a:f7:a2:c0:") 
-    avg_rssi_heatmap(data_points, "e0:db:d1:15:b0:20:")
+    i=0
+    for key in data_points.keys():
+        i+=1
+        avg_rssi_heatmap(data_points, key) 
+        if i>5:
+            break
+    
+    #avg_rssi_heatmap(data_points, "cc:88:c7:41:b1:22:")
+    #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
+    #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
+    plt.show()
      #
