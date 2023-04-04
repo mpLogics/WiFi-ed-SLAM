@@ -7,7 +7,8 @@ Create a heatmap of the Wi-Fi signal strength in a room from a dataset file
 The heatmap is multi-dimensional; each dimension represents a different Access Point (AP)
 Authors: Arthur L.
 """
-DATASET_FILENAME = r'\Users\prmanav\Downloads\dataset_3_4.txt'
+DATASET_FILENAME_4 = r'\Users\prmanav\Downloads\dataset_4_4.txt'
+DATASET_FILENAME_3 = r'\Users\prmanav\Downloads\dataset_3_4.txt'
 #'C:\Users\Nikitha M V\OneDrive - Umich\Desktop\pythonProject1\HW\dataset.txt'
 
 
@@ -83,17 +84,35 @@ def avg_rssi_heatmap(data_points, bssid):
 
 
 if __name__ == "__main__":
-    data_points = read_dataset_file(DATASET_FILENAME)
+    data_points_3 = read_dataset_file(DATASET_FILENAME_3)
+    data_points_4 = read_dataset_file(DATASET_FILENAME_4)
+
+    #plt.plot(data_points_3["cc:88:c7:41:b1:22:"][(0,-1)])
+    
+    #a = np.unique(np.array(list[data_points_3.keys()]))
+    #b = np.unique(np.array(list[data_points_4.keys()]))
+    
+    # Finding unique MAC Addresses in different instances of dataset collection.
+    #print(len([k for k in data_points_3 if k in data_points_4]))
+    #print(len(data_points_3))
+    #print(len(data_points_4))
+    
     # print(data_points)
+
+    # Analyzing difference in time for the wifi signals at the same position
     i=0
-    for key in data_points.keys():
+    for key in data_points_3.keys():
         i+=1
-        avg_rssi_heatmap(data_points, key) 
+        plt.plot(data_points_3[key][(3,0)],label = key)
         if i>5:
             break
-    
+    plt.legend()
+    plt.show()
+
+    # Generating RSSI heatmaps for the particular MAC Address
+
     #avg_rssi_heatmap(data_points, "cc:88:c7:41:b1:22:")
     #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
-    #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
+    
     plt.show()
      #
