@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+import wifi_dataset_collection as wdc
 
 """
 Create a heatmap of the Wi-Fi signal strength in a room from a dataset file
@@ -12,8 +13,7 @@ Authors: Arthur L.
 DATASET_FILENAME_3 = r'.\data\dataset_3_4.txt'
 #'C:\Users\Nikitha M V\OneDrive - Umich\Desktop\pythonProject1\HW\dataset.txt'
 
-
-def read_dataset_file(filename):
+def read_dataset_file(filename, method='bssid'):
     # Read the dataset file
     with open(filename, 'r') as fp:
         lines = fp.readlines()
@@ -28,7 +28,6 @@ def read_dataset_file(filename):
         # Skip empty lines
         if line == '\n':
             continue
-
 
         # Parse the line
         line = line.strip()
@@ -46,23 +45,70 @@ def read_dataset_file(filename):
                 signal_strength = float(network[1])
                 ssid = ' '.join(network[2:])
 
-                try:
-                    # if dictionary is empty, create one  
-                    # otherwise append to the dictionary
-                    data_points[bssid]
-                except KeyError:
-                    data_points[bssid]={}
-                try:
-                    data_points[bssid][(x,y)]
-                except KeyError:
-                    data_points[bssid][(x,y)] = []
-                data_points[bssid][(x,y)].append(signal_strength)
+                if method == 'bssid':
+                    if bssid in data_points:
+                        if (x,y) in data_points[bssid]:
+                            data_points[bssid][(x,y)].append(signal_strength)
+                        else:
+                            data_points[bssid][(x,y)] = [signal_strength]
+                    else:
+                        data_points[bssid] = {(x,y):[signal_strength]}
+
+                elif method == 'location':
+                    if (x,y) in data_points:
+                        if bssid in data_points[(x,y)]:
+                            data_points[(x,y)][bssid].append(signal_strength)
+                        else:
+                            data_points[(x,y)][bssid] = [signal_strength]
+                    else:
+                        data_points[(x,y)] = {bssid:[signal_strength]}
+
+                # try:
+                #     # if dictionary is empty, create one  
+                #     # otherwise append to the dictionary
+                #     data_points[bssid]
+                # except KeyError:
+                #     data_points[bssid]={}
+                # try:
+                #     data_points[bssid][(x,y)]
+                # except KeyError:
+                #     data_points[bssid][(x,y)] = []
+                # data_points[bssid][(x,y)].append(signal_strength)
 
     return data_points
 
+def plot_wifi_scan_pdf(wifi_scan, dataset_filename):
+    """
+    Plot the probability that the wifi_scan was taken at each location in the dataset
+    args:
+        wifi_scan: WifiScan object, containing a list of WifiNetwork objects in wifi_scan.networks
+        dataset_filename: string, the name of the dataset file
+    """
+    location_estimate = location_estimate_avg(wifi_scan.networks, dataset_filename)
+    x, y = zip(*location_estimate.keys())
+    probabilities = location_estimate.values()
 
-#create a heatmap of average signal strength for a given bssid
+    xi = np.linspace(min(x), max(x), 100)
+    yi = np.linspace(min(y), max(y), 100)
+    zi = griddata((x, y), probabilities, (xi[None, :], yi[:, None]), method='cubic')
+
+    # Create the heatmap
+    plt.figure(figsize=(8, 6))
+    plt.contourf(xi, yi, zi, levels=15, cmap='GnBu')
+    plt.colorbar(label='Probability')
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.title('Probability of Location given Wifi Scan')
+    
+
 def avg_rssi_heatmap(data_points, bssid):
+    """
+    create a heatmap of average signal strength for a given bssid
+    args:
+        data_points: dictionary whose keys are bssid and whose and values are another dictionary
+            that has the x,y coordinates as the key and the list of signal strengths as the value
+        bssid: string, the bssid of the Access Point (AP) to plot
+    """
     pos_rssi_dict = data_points[bssid] #dictionary of x,y coordinates and signal strength for this bssid
 
     x, y = zip(*pos_rssi_dict.keys())
@@ -84,14 +130,50 @@ def avg_rssi_heatmap(data_points, bssid):
     plt.title(f'Signal Strength at {bssid}')
 
 
+class NaiveBayesClassifier:
+    pass
+
+
+def location_estimate_avg(wifi_reading, dataset_filename):
+    """
+    args:
+        wifi_reading: list of WifiNetwork objects, 
+            where each one contains its bssid, ssid, and signal_strength
+        dataset_filename: string, the name of the dataset file
+    returns:
+        location_estimate: dictionary whose keys are the (x,y) tuples from data_points, 
+            and whose values are the probability that that location is the true location 
+            given the wifi_reading
+
+    This function calculates the probability distribution of 
+        P(this location is the true location | wifi reading)
+    It does this by calculating the MSE between the wifi reading (which can be though of as a vector 
+    with as many dimensions as there are bssids) and the vector of average RSSI values at the given location
+    These values are then normalized across the entire space so they sum to 1.
+    """
+    data_points = read_dataset_file(dataset_filename, method='location')
+    location_estimate = np.array([])
+    for location, bssid_rssi_dict in data_points.items():
+        diff_vector = np.array([])
+        for network in wifi_reading:
+            if network.bssid in bssid_rssi_dict:
+                diff_vector.append(np.mean(bssid_rssi_dict[network.bssid]) - network.signal_strength)
+        mse = np.mean(diff_vector**2)
+        location_estimate[location] = mse
+
+    # normalize the values so they sum to 1
+    total = sum(location_estimate.values())
+    for location in location_estimate:
+        location_estimate[location] /= total
+
+    return location_estimate
+
+
 if __name__ == "__main__":
     data_points_3 = read_dataset_file(DATASET_FILENAME_3)
     # data_points_4 = read_dataset_file(DATASET_FILENAME_4)
 
     #plt.plot(data_points_3["cc:88:c7:41:b1:22:"][(0,-1)])
-    
-    #a = np.unique(np.array(list[data_points_3.keys()]))
-    #b = np.unique(np.array(list[data_points_4.keys()]))
     
     # Finding unique MAC Addresses in different instances of dataset collection.
     #print(len([k for k in data_points_3 if k in data_points_4]))
@@ -104,14 +186,14 @@ if __name__ == "__main__":
     i=0
     for key in data_points_3.keys():
         i+=1
-        plt.plot(data_points_3[key][(3,0)],label = key)
+        # plt.plot(data_points_3[key][(3,0)],label = key)
+        avg_rssi_heatmap(data_points_3, key)
         if i>5:
             break
     plt.legend()
     plt.show()
 
     # Generating RSSI heatmaps for the particular MAC Address
-
     #avg_rssi_heatmap(data_points, "cc:88:c7:41:b1:22:")
     #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
     
