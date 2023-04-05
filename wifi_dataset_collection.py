@@ -12,7 +12,7 @@ Procedure:
 Authors: Arthur L.
 """
 
-DATASET_FILENAME = r'.\data\dataset.txt'
+DATASET_FILENAME = r'.\data\dataset_4_5.txt'
 N_DATAPOINTS_PER_LOCATION = 5
 
 class WifiNetwork:
@@ -76,29 +76,33 @@ def map_wifi():
     iface = wifi.interfaces()[0] # the Wi-Fi interface which we use to perform Wi-Fi operations (e.g. scan, connect, disconnect, ..
 
     while True:
-        for i in range(N_DATAPOINTS_PER_LOCATION):
-            collect_wifi_scan(iface)
+        collect_wifi_scan(iface, n_scans=N_DATAPOINTS_PER_LOCATION)
 
 
-def collect_wifi_scan(iface):
+def collect_wifi_scan(iface, n_scans=5, wait_seconds=4):
     # Input the location of the scan
     x = float(input("Enter X coordinate: "))
     y = float(input("Enter Y coordinate: "))
     location = (x, y)
+    
+    for i in range(n_scans):
+        # Create a WifiScan object
+        datapoint = WifiScan(time.time(), location)
 
-    # Create a WifiScan object
-    datapoint = WifiScan(time.time(), location)
+        # Perform scan as soon as Y coordinate is entered
+        iface.scan() #Trigger the interface to scan APs.
+        time.sleep(wait_seconds) #scan time for each Wi-Fi interface is variant. Safer to wait 2 ~ 8 sec
+        networks = iface.scan_results()
 
-    # Perform scan as soon as Y coordinate is entered
-    iface.scan() #Trigger the interface to scan APs.
-    time.sleep(4) #scan time for each Wi-Fi interface is variant. Safer to wait 2 ~ 8 sec
-    networks = iface.scan_results()
+        # Add the scan results to the WifiScan object
+        datapoint.add_networks(networks)
 
-    # Add the scan results to the WifiScan object
-    datapoint.add_networks(networks)
+        # Save the WifiScan object to a file
+        datapoint.save_to_file(DATASET_FILENAME)
 
-    # Save the WifiScan object to a file
-    datapoint.save_to_file(DATASET_FILENAME)
+
+def collect_slam_data():
+    pass
 
 def test_wifi():
     wifi = pywifi.PyWiFi()

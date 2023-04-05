@@ -8,10 +8,7 @@ Create a heatmap of the Wi-Fi signal strength in a room from a dataset file
 The heatmap is multi-dimensional; each dimension represents a different Access Point (AP)
 Authors: Arthur L.
 """
-# DATASET_FILENAME_4 = r'\Users\prmanav\Downloads\dataset_4_4.txt'
-# DATASET_FILENAME_3 = r'\Users\prmanav\Downloads\dataset_3_4.txt'
-DATASET_FILENAME_3 = r'.\data\dataset_3_4.txt'
-#'C:\Users\Nikitha M V\OneDrive - Umich\Desktop\pythonProject1\HW\dataset.txt'
+DATASET_FILENAME_3 = r'.\data\dataset_4_5.txt'
 
 def read_dataset_file(filename, method='bssid'):
     # Read the dataset file
