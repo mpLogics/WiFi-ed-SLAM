@@ -2,13 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 import wifi_dataset_collection as wdc
-
+import pywifi
 """
 Create a heatmap of the Wi-Fi signal strength in a room from a dataset file
 The heatmap is multi-dimensional; each dimension represents a different Access Point (AP)
 Authors: Arthur L.
 """
-DATASET_FILENAME_3 = r'.\data\dataset_4_5.txt'
+DATASET_FILENAME_3 = r'.\data\dataset_3_4.txt'
 
 def read_dataset_file(filename, method='bssid'):
     # Read the dataset file
@@ -74,29 +74,6 @@ def read_dataset_file(filename, method='bssid'):
 
     return data_points
 
-def plot_wifi_scan_pdf(wifi_scan, dataset_filename):
-    """
-    Plot the probability that the wifi_scan was taken at each location in the dataset
-    args:
-        wifi_scan: WifiScan object, containing a list of WifiNetwork objects in wifi_scan.networks
-        dataset_filename: string, the name of the dataset file
-    """
-    location_estimate = location_estimate_avg(wifi_scan.networks, dataset_filename)
-    x, y = zip(*location_estimate.keys())
-    probabilities = location_estimate.values()
-
-    xi = np.linspace(min(x), max(x), 100)
-    yi = np.linspace(min(y), max(y), 100)
-    zi = griddata((x, y), probabilities, (xi[None, :], yi[:, None]), method='cubic')
-
-    # Create the heatmap
-    plt.figure(figsize=(8, 6))
-    plt.contourf(xi, yi, zi, levels=15, cmap='GnBu')
-    plt.colorbar(label='Probability')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title('Probability of Location given Wifi Scan')
-    
 
 def avg_rssi_heatmap(data_points, bssid):
     """
@@ -149,12 +126,12 @@ def location_estimate_avg(wifi_reading, dataset_filename):
     These values are then normalized across the entire space so they sum to 1.
     """
     data_points = read_dataset_file(dataset_filename, method='location')
-    location_estimate = np.array([])
+    location_estimate = {}
     for location, bssid_rssi_dict in data_points.items():
         diff_vector = np.array([])
         for network in wifi_reading:
             if network.bssid in bssid_rssi_dict:
-                diff_vector.append(np.mean(bssid_rssi_dict[network.bssid]) - network.signal_strength)
+                np.append(diff_vector, np.mean(bssid_rssi_dict[network.bssid]) - network.signal_strength)
         mse = np.mean(diff_vector**2)
         location_estimate[location] = mse
 
@@ -165,34 +142,65 @@ def location_estimate_avg(wifi_reading, dataset_filename):
 
     return location_estimate
 
+def plot_wifi_scan_pdf(wifi_scan, dataset_filename):
+    """
+    Plot the probability that the wifi_scan was taken at each location present in the dataset
+    args:
+        wifi_scan: WifiScan object, containing a list of WifiNetwork objects (in wifi_scan.networks)
+        dataset_filename: string, the name of the dataset file
+    """
+    location_estimate = location_estimate_avg(wifi_scan.networks, dataset_filename)
+    x, y = zip(*location_estimate.keys())
+    probabilities = location_estimate.values()
+
+    xi = np.linspace(min(x), max(x), 100)
+    yi = np.linspace(min(y), max(y), 100)
+    zi = griddata((x, y), probabilities, (xi[None, :], yi[:, None]), method='cubic')
+
+    # Create the heatmap
+    plt.figure(figsize=(8, 6))
+    plt.contourf(xi, yi, zi, levels=15, cmap='GnBu')
+    plt.colorbar(label='Probability')
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.title('Probability of Location given Wifi Scan')
+    
+def location_estimate_pdf(dataset_filename,method='MSE'):
+    wifi = pywifi.PyWiFi()
+    iface = wifi.interfaces()[0] # the Wi-Fi interface which we use to perform Wi-Fi operations (e.g. scan, connect, disconnect, ..
+
+    if method == 'MSE':
+        scan = wdc.collect_wifi_scan(iface)
+        plot_wifi_scan_pdf(scan, dataset_filename)
+
 
 if __name__ == "__main__":
-    data_points_3 = read_dataset_file(DATASET_FILENAME_3)
+    # Plot the probability that the wifi_scan was taken at each location present in the dataset
+    location_estimate_pdf(DATASET_FILENAME_3,method='MSE')
+    
+    # data_points_3 = read_dataset_file(DATASET_FILENAME_3)
     # data_points_4 = read_dataset_file(DATASET_FILENAME_4)
 
     #plt.plot(data_points_3["cc:88:c7:41:b1:22:"][(0,-1)])
     
-    # Finding unique MAC Addresses in different instances of dataset collection.
+    # Find unique MAC Addresses in different instances of dataset collection.
     #print(len([k for k in data_points_3 if k in data_points_4]))
     #print(len(data_points_3))
     #print(len(data_points_4))
-    
     # print(data_points)
 
-    # Analyzing difference in time for the wifi signals at the same position
-    i=0
-    for key in data_points_3.keys():
-        i+=1
-        # plt.plot(data_points_3[key][(3,0)],label = key)
-        avg_rssi_heatmap(data_points_3, key)
-        if i>5:
-            break
-    plt.legend()
-    plt.show()
+    # # Make n plots of wifi visualizations
+    # n_plots = 5
+    # i=0
+    # for key in data_points_3.keys():
+    #     i+=1
+    #     # plt.plot(data_points_3[key][(3,0)],label = key)
+    #     avg_rssi_heatmap(data_points_3, key)
+    #     if i>n_plots:
+    #         break
 
     # Generating RSSI heatmaps for the particular MAC Address
     #avg_rssi_heatmap(data_points, "cc:88:c7:41:b1:22:")
     #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
-    
+    plt.legend()
     plt.show()
-     #
