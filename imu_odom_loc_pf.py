@@ -1,201 +1,206 @@
 # App: Hyper IMU
 
 import numpy as np
-import random
 import socket
-import math
+import random
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import csv
+
+class Particle:
+    def __init__(self, x, y, theta, weight):
+        self.x = x
+        self.y = y
+        self.theta = theta
+        self.weight = weight
+        self.gyro_bias = 0.0
 
 class PFLocalization:
     def __init__(self):
-        self.HOST = '192.168.246.233'
-        self.PORT = 2055
-
         self.prev_time = 0.0
 
-        self.linear_acceleration = [0.0, 0.0, 0.0]
-        self.angular_velocity = [0.0, 0.0, 0.0]
+        self.lin_acc = [0.0, 0.0, 0.0]
+        self.ang_vel = [0.0, 0.0, 0.0]
 
-        self.alpha = 1.0    # complementary filter coefficient
+        self.num_particles = 2000
+        self.particles = []
+        self.weights = np.zeros(self.num_particles)
+        self.weights.fill(1.0/self.num_particles)
+        self.initialize_particles()
+        self.last_gyro_theta = None
+        self.alpha = 0.5 # Complementary filter constant
+
+        self.dt = 0.01
 
         self.calib_cnt = 0
         self.calib_lin = np.array([0.0, 0.0, 0.0])
         self.calib_ang = np.array([0.0, 0.0, 0.0])
 
-        # Define constants
-        self.N_Particles = 1
-        self.dt = 0.01
-        self.sigma_velocity = 0.05
-        self.sigma_position = 0.1
+        # open the file in the write mode
+        self.f = open('pose.csv', 'w', newline='')
+        self.writer = csv.writer(self.f)
 
-        # Define state vector
-        self.state = np.zeros((3, 1))
-        # self.state[:3] = np.random.uniform(-1, 1, size=(3, 1))
-
-        # Initialize particles with Gaussian distribution around the initial position
-        self.mu = np.array([[0], [0], [0]])
-        self.cov = np.diag([1, 1, 1])
-        self.particles = np.random.multivariate_normal(self.mu.ravel(), self.cov, size=self.N_Particles)
-
-        # Initialize weights to be uniform
-        self.weights = np.ones(self.N_Particles) / self.N_Particles
+        # self.fig, self.ax = plt.subplots()
+        # plt.ion()
+        # plt.show()
     
-    def wrapTopi(self, angle):
-        phase = (angle + np.pi) % (2*np.pi) - np.pi
-        return phase
+    def initialize_particles(self):
+        for i in range(self.num_particles):
+            particle = Particle(np.random.uniform(-0.5,0.5),
+                                np.random.uniform(-0.5,0.5),
+                                np.random.uniform(-np.pi/4, np.pi/4),
+                                1.0/self.num_particles)
+            self.particles.append(particle)
 
-    def motion_model(self):
-        # velocity_noise = np.random.normal(scale=self.sigma_velocity, size=(3, 1))
-        acceleration = np.array([[self.linear_acceleration[0]], [self.linear_acceleration[1]], [self.linear_acceleration[2]]])
-        gyro_rate = np.array([[self.angular_velocity[0]], [self.angular_velocity[1]], [self.angular_velocity[2]]])
-
-        x, y, theta = float(self.state[0]), float(self.state[1]), float(self.state[2])
-
-        theta = self.alpha * (theta + gyro_rate[2] * self.dt) + (1 - self.alpha) * math.atan2(math.sin(theta), math.cos(theta))
-        theta = self.wrapTopi(theta)
-
-        # calculate displacement
-        dx = (acceleration[0] * math.cos(theta) + acceleration[1] * math.sin(theta)) * self.dt
-        dy = (-acceleration[0] * math.sin(theta) + acceleration[1] * math.cos(theta)) * self.dt
-        # print(acceleration)
-        # print(gyro_rate)
-        # print(f"{dx}, {dy}, {theta}")
-
-        # update position
-        x += dx
-        y += dy
-
-        return np.array([x, y, theta])
-
-
-    # Define measurement model function
-    def measurement_model(self, state):
-        measurement_noise = np.random.normal(scale=self.sigma_position, size=(2, 1))
-        return state[0:2] + measurement_noise
-    
-    # Define update function
     def update(self):
-        for i in range(self.N_Particles):
-            self.particles[i, :] = self.motion_model().flatten()
-        # position_estimate = np.mean(self.particles, axis=0)
-        # print(f"p:{position_estimate[0], position_estimate[1], position_estimate[2]}")
-    
-        for i in range(self.N_Particles):
-            state = self.particles[i, :]
-            predicted_measurement = self.measurement_model(state)
-            distance = np.linalg.norm(predicted_measurement - self.state[0:2])
-            self.weights[i] *= np.exp(-0.5 * (distance ** 2) / (self.sigma_position ** 2))
-        self.weights /= np.sum(self.weights)
+        z_acc = self.lin_acc
+        z_gyro = self.ang_vel[2]
+        dt = self.dt
+        for i in range(self.num_particles):
+            # Sample a new particle from the previous particles
+            if self.last_gyro_theta is None:
+                # self.last_gyro_theta = np.arctan2(-z_acc[0], np.sqrt(z_acc[1]**2 + z_acc[2]**2)) - self.particles[i].theta
+                self.last_gyro_theta = z_gyro - self.particles[i].theta - self.particles[i].gyro_bias
+            
+            # Update the particle's position and angle based on the gyroscope reading
+            self.particles[i].x += z_acc[0] * np.cos(self.particles[i].theta) * dt - z_acc[1] * np.sin(self.particles[i].theta) * dt ** 2 / 2
+            self.particles[i].y += z_acc[0] * np.sin(self.particles[i].theta) * dt + z_acc[1] * np.cos(self.particles[i].theta) * dt ** 2 / 2
 
-        # if np.sum(self.weights) > 0:
-        #     self.weights /= np.sum(self.weights)
-        # else:
-        #     self.weights[:] = 1.0 / self.N_Particles
+            # Compute the change in theta based on the gyroscope reading
+            dtheta = z_gyro * dt - self.particles[i].gyro_bias # + np.random.normal(0, 0.01)
+            self.particles[i].theta += dtheta
 
+            # Apply the complementary filter to combine the accelerometer and gyroscope readings
+            self.particles[i].theta = self.alpha * (self.particles[i].theta + np.arctan2(-z_acc[0], np.sqrt(z_acc[1]**2 + z_acc[2]**2))) + (1 - self.alpha) * (self.last_gyro_theta)
+            self.last_gyro_theta = self.particles[i].theta
+                    
+            # Wrap the angle to [-pi, pi]
+            self.particles[i].theta = np.arctan2(np.sin(self.particles[i].theta), np.cos(self.particles[i].theta))
+
+            #  Update the particle's gyro bias
+            self.particles[i].gyro_bias += np.random.normal(0, 0.01)
+                    
+            # Calculate the weight of the particle based on the difference between the predicted and actual measurements
+            z_hat = np.array([np.sqrt(self.particles[i].x**2 + self.particles[i].y**2), # + np.random.normal(0, 0.01),
+                            self.particles[i].theta + np.random.normal(0, 0.05)])
+            diff = np.array([np.sqrt((z_hat[0] - np.sqrt(z_acc[0]**2 + z_acc[1]**2))**2 + (z_hat[1] - z_gyro)**2),
+                            np.arctan2(np.sin(z_gyro - self.particles[i].theta - self.particles[i].gyro_bias),
+                                        np.cos(z_gyro - self.particles[i].theta - self.particles[i].gyro_bias))])
+            self.weights[i] *= np.exp(-0.5 * np.dot(diff, diff))
+                    
+        # Normalize the weights
+        if np.sum(self.weights) > 0:
+            self.weights /= np.sum(self.weights)
+        else:
+            self.weights[:] = 1.0 / self.num_particles
+
+        # resample
         # Compute effective number of particles
         neff = 1 / np.sum(np.square(self.weights))
 
         # Resample only if neff is below a threshold
-        if neff < self.N_Particles / 5:
+        if neff < self.num_particles / 5:
             self.resample()
 
-    # Define resampling function
-    def resample(self):
-        print("resampling")
-        new_particles = np.zeros_like(self.particles)
-        new_weights = np.zeros_like(self.weights)
-        cumulative_sum = np.cumsum(self.weights)
-        r = random.uniform(0, 1 / self.N_Particles)
-        j = 0
-        for i in range(self.N_Particles):
-            u = r + i / self.N_Particles
-            while u > cumulative_sum[j]:
-                j += 1
-            new_particles[i, :] = self.particles[j, :]
-            new_weights[i] = 1 / self.N_Particles
-        self.particles, self.weights = new_particles, new_weights
+        # plot
+        # self.plot_particles()
+    
+    def plot_particles(self):
+        # Plot particles
+        xs = [particle.x for particle in self.particles]
+        ys = [particle.y for particle in self.particles]
+        self.ax.clear()
+        self.ax.scatter(xs, ys, s=5)
+        plt.draw()
+        plt.pause(0.001)
 
+    def get_estimated_pose(self):
+        x_mean = 0.0
+        y_mean = 0.0
+        theta_mean = 0.0
+        for particle in self.particles:
+            x_mean += particle.x
+            y_mean += particle.y
+            theta_mean += particle.theta
+        x_mean /= self.num_particles
+        y_mean /= self.num_particles
+        theta_mean /= self.num_particles
+        return (x_mean, y_mean, theta_mean)
+    
+    def resample(self):            
+        # Resample particles based on the weights
+        new_particles = []
+        for i in range(self.num_particles):
+            index = np.random.choice(self.num_particles, p=self.weights)
+            new_particle = Particle(self.particles[index].x,
+                                        self.particles[index].y,
+                                        self.particles[index].theta,
+                                        self.weights[index])
+            new_particle.gyro_bias = self.particles[index].gyro_bias
+            new_particles.append(new_particle)
+            
+        self.particles = new_particles
+        self.weights = np.array([1.0/self.num_particles for i in range(self.num_particles)])
+    
     def calibrate(self):
-        self.calib_lin = self.calib_lin + self.linear_acceleration
-        self.calib_ang = self.calib_ang + self.angular_velocity
+        self.calib_lin = self.calib_lin + self.lin_acc
+        self.calib_ang = self.calib_ang + self.ang_vel
+    
+    def run(self, sensor_data):
+        dt = float(sensor_data[0]) - self.prev_time
+        if dt >= 80 and dt <= 400:
+            self.dt = dt/1000
+            # self.lin_acc = np.array([float(sensor_data[1]), float(sensor_data[2]), 0.0])
+            # self.ang_vel = np.array([0.0, 0.0, float(sensor_data[6])])
+            self.lin_acc = np.array([round(float(sensor_data[1]), 3), round(float(sensor_data[2]), 3), 0.0]) # round(acc_z, 2)]
+            self.ang_vel = np.array([0.0, 0.0, round(float(sensor_data[6]), 2)]) # [gyro_x, gyro_y, gyro_z]
 
-    def run(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((self.HOST, self.PORT))
-            s.listen()
-            print(f"Listening for connections on {self.HOST}:{self.PORT}...")
-            conn, addr = s.accept()
-            with conn:
-                print('Connected by', addr)
-                fig = plt.figure()
-                ax = fig.add_subplot(111) # , projection='3d')
-                ax.set_xlim([-20, 20])
-                ax.set_ylim([-20, 20])
-                # ax.set_zlim([-2, 2])
-                while True:
-                    try:
-                        data = conn.recv(1024)
-                        if not data:
-                            continue
-                        sensor_data = data.decode().split(',')
-                        if len(sensor_data) != 7:
-                            continue
-                        # timestamp, gyro_x, gyro_y, gyro_z, acc_x, acc_y, acc_z = map(float, data.decode().split(','))
-                        dt = float(sensor_data[0]) - self.prev_time
-                        if dt >= 80 and dt <= 400:
-                            self.dt = dt*(1/1000)
-                            self.linear_acceleration = np.array([round(float(sensor_data[4]), 3), round(float(sensor_data[5]), 3), 0.0]) # round(acc_z, 2)]
-                            self.angular_velocity = np.array([0.0, 0.0, round(float(sensor_data[3]), 6)]) # [gyro_x, gyro_y, gyro_z]
-                            print(f"{sensor_data[0]}, {sensor_data[1]}, {sensor_data[2]}, {sensor_data[3]}, {sensor_data[4]}, {sensor_data[5]}, {sensor_data[6]}")
+            if self.calib_cnt <= 100:
+                self.calibrate()
+                if self.calib_cnt == 100:
+                    self.calib_lin = self.calib_lin / (self.calib_cnt+1)
+                    self.calib_ang = self.calib_ang / (self.calib_cnt+1)
+                    print("calib done")
+                self.calib_cnt += 1
+                return
 
-                            if self.calib_cnt <= 50:
-                                self.calibrate()
-                                if self.calib_cnt == 50:
-                                    # print(self.calib_lin)
-                                    # print(self.calib_ang)
-                                    self.calib_lin = self.calib_lin / (self.calib_cnt+1)
-                                    self.calib_ang = self.calib_ang / (self.calib_cnt+1)
-                                    # print(self.calib_lin)
-                                    # print(self.calib_ang)
-                                    # print("calib done")
-                                self.calib_cnt += 1
-                                continue
+            self.lin_acc = self.lin_acc - self.calib_lin
+            self.ang_vel = self.ang_vel - self.calib_ang
+            
+            self.update()
+            if self.writer:
+                self.writer.writerow(self.get_estimated_pose())
+            # print(self.get_estimated_pose())
 
-                            self.linear_acceleration = self.linear_acceleration - self.calib_lin
-                            self.angular_velocity = self.angular_velocity - self.calib_ang
+        self.prev_time = float(sensor_data[0])
 
-                            # Update particles and weights
-                            self.update()
-
-                            # Output current estimate of position
-                            self.position_estimate = np.mean(self.particles, axis=0)
-                            print(f"t:{dt}, lin:{self.linear_acceleration}, ang:{self.angular_velocity}, p:{self.position_estimate}")
-                            # print(f"p:{self.position_estimate[0], self.position_estimate[1], self.position_estimate[2]}")
-
-                            # Plot particles
-                            # ax.clear()
-                            # ax.set_xlim([-20, 20])
-                            # ax.set_ylim([-20, 20])
-                            # # ax.set_zlim([-2, 2])
-                            # ax.scatter(self.particles[:, 0], self.particles[:, 1], s=1, c='r', alpha=0.1)
-                            # ax.scatter(self.state[0], self.state[1], s=100, c='b', alpha=1.0)
-
-                            # plt.draw()
-                            # plt.pause(0.01)
-
-                        self.prev_time = float(sensor_data[0])
-                        conn.sendall(f"ACK".encode())
-                    except KeyboardInterrupt:
-                        plt.close()
-                        print("Program Killed. Exiting!!")
-                        break
-                    except ConnectionResetError:
-                        plt.close()
-                        print("connection lost")
-                        break
-                    except ValueError:
-                        pass
 if __name__ == "__main__":
     pfLoc = PFLocalization()
-    pfLoc.run()
+    HOST = '192.168.246.233'
+    PORT = 2055
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((HOST, PORT))
+        s.listen()
+        print(f"Listening for connections on {HOST}:{PORT}...")
+        conn, addr = s.accept()
+        with conn:
+            print('Connected by', addr)
+            while True:
+                try:
+                    data = conn.recv(1024)
+                    if not data:
+                        continue
+                    sensor_data = data.decode().split(',')
+                    if len(sensor_data) != 7:
+                        continue
+                    pfLoc.run(sensor_data)
+                    conn.sendall(f"ACK".encode())
+                except KeyboardInterrupt:
+                    print("Program Killed. Exiting!!")
+                    break
+                except ConnectionResetError:
+                    print("connection lost")
+                    break
+                except ValueError:
+                    pass
+
+
