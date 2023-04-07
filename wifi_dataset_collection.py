@@ -12,7 +12,8 @@ Procedure:
 Authors: Arthur L.
 """
 
-DATASET_FILENAME = r'C:\Users\arthu\OneDrive\Documents\Classwork\NA568_Mobile_Robotics\project\dataset.txt'
+DATASET_FILENAME = r'.\data\dataset_test.txt'
+N_DATAPOINTS_PER_LOCATION = 5
 
 class WifiNetwork:
     """
@@ -24,10 +25,14 @@ class WifiNetwork:
     def __init__(self, bssid, ssid, signal_strength):
         self.bssid = bssid
         self.ssid = ssid
-        self.signal = signal_strength
+        self.signal_strength = signal_strength
 
     def __str__(self):
-        return f"{self.bssid}   {self.signal}   {self.ssid}"
+        return f"{self.bssid}   {self.signal_strength}   {self.ssid}"
+    
+    def __eq__(self, other):
+        return self.bssid == other.bssid and self.ssid == other.ssid and self.signal_strength == other.signal_strength
+    
 
 class WifiScan:
     """
@@ -49,7 +54,7 @@ class WifiScan:
     def save_to_file(self, filename):
         with open(filename, 'a') as fp:
             fp.write(str(self))
-        print(f'Datapoint appended to file: {filename}\n')
+        print(f'Datapoint appended to file: {filename}')
 
     def __str__(self):
         b = time.localtime(self.timestamp)
@@ -59,6 +64,9 @@ class WifiScan:
         for network in self.networks:
             output += f"{str(network)}\n"
         return(f"{output}\n")
+    
+    # def __sub__(self, other):
+
 
 # Create a heatmap of the Wi-Fi signal strength in a room
 # The heatmap is multi-dimensional; each dimension represents a different network
@@ -68,23 +76,38 @@ def map_wifi():
 
     while True:
         # Input the location of the scan
-        x = float(input("Enter X coordinate: "))
-        y = float(input("Enter Y coordinate: "))
-        location = (x, y)
+        try:
+            x = float(input("Enter X coordinate: "))
+            y = float(input("Enter Y coordinate: "))
+            location = (x, y)
+            for i in range(N_DATAPOINTS_PER_LOCATION):
+                collect_wifi_scan(iface, location=location, dataset_filename=DATASET_FILENAME)
+        except ValueError:
+            print("Non-numeric input. Ending Data Collection.")
+            break
 
-        # Create a WifiScan object
-        datapoint = WifiScan(time.time(), location)
 
-        # Perform scan as soon as Y coordinate is entered
-        iface.scan() #Trigger the interface to scan APs.
-        time.sleep(4) #scan time for each Wi-Fi interface is variant. Safer to wait 2 ~ 8 sec
-        networks = iface.scan_results()
+def collect_wifi_scan(iface, location=None, dataset_filename=None, wait_seconds=4):
+    # Create a WifiScan object
+    datapoint = WifiScan(time.time(), location)
 
-        # Add the scan results to the WifiScan object
-        datapoint.add_networks(networks)
+    # Perform scan as soon as Y coordinate is entered
+    iface.scan() #Trigger the interface to scan APs.
+    time.sleep(wait_seconds) #scan time for each Wi-Fi interface is variant. Safer to wait 2 ~ 8 sec
+    networks = iface.scan_results()
 
-        # Save the WifiScan object to a file
-        datapoint.save_to_file(DATASET_FILENAME)
+    # Add the scan results to the WifiScan object
+    datapoint.add_networks(networks)
+
+    # Save the WifiScan object to a file
+    if dataset_filename is not None:
+        datapoint.save_to_file(dataset_filename)
+
+    return datapoint
+
+
+def collect_slam_data():
+    pass
 
 def test_wifi():
     wifi = pywifi.PyWiFi()
@@ -92,9 +115,6 @@ def test_wifi():
     iface.scan()
     time.sleep(4)
     networks = iface.scan_results()
-    # print(networks)
-    # print(dir(networks[0]))
-    # what is BSSID https://unix.stackexchange.com/questions/200426/what-is-uuid-of-a-wifi-network
     # pywifi.profile.Profile object attributes:
     # 'akm', 'auth', 'bssid', 'cipher', 'freq', 'id', 'key', 'process_akm', 'signal', 'ssid'
     for profile in networks:
