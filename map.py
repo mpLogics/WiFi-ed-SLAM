@@ -116,7 +116,7 @@ def location_estimate_avg(wifi_reading, dataset_filename):
     data_points = read_dataset_file(dataset_filename, method='location')
     location_estimate = {}
     for location, bssid_rssi_dict in data_points.items():
-        diff_vector = [] #np.array([])
+        diff_vector = [] 
         for network in wifi_reading:
             if network.bssid in bssid_rssi_dict:
                 l = len(bssid_rssi_dict[network.bssid])
@@ -143,10 +143,8 @@ def plot_wifi_scan_pdf(wifi_scan, dataset_filename):
     """
     location_estimate = location_estimate_avg(wifi_scan.networks, dataset_filename)
     x, y = zip(*location_estimate.keys())
-    probabilities = location_estimate.values()
+    probabilities = np.fromiter(location_estimate.values(), dtype=float)#location_estimate.values()
 
-    # print(f'locations: {x}, {y}')
-    # print(f'probabilities: {probabilities}')
     xi = np.linspace(min(x), max(x), 100)
     yi = np.linspace(min(y), max(y), 100)
     zi = griddata((x, y), probabilities, (xi[None, :], yi[:, None]), method='cubic')
