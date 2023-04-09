@@ -1,3 +1,9 @@
+# USE wifi_dataset_collection.py
+# That file does the same thing, was created first, and 
+# is currently more up to date.
+
+
+
 import pywifi #https://github.com/awkman/pywifi/blob/master/DOC.md
 # from pywifi import const
 import time

@@ -95,6 +95,32 @@ def avg_rssi_heatmap(data_points, bssid):
 class NaiveBayesClassifier:
     pass
 
+def location_estimate_naive_bayes(wifi_reading, dataset_filename):
+    """
+    args:
+        wifi_reading: list of WifiNetwork objects, 
+            where each one contains its bssid, ssid, and signal_strength
+        dataset_filename: string, the name of the dataset file
+    returns:
+        location_estimate: dictionary whose keys are the (x,y) tuples from data_points, 
+            and whose values are the probability that that location is the true location 
+            given the wifi_reading
+
+    This function calculates the probability distribution of 
+        P(this location is the true location | wifi reading)
+    It does this by fitting a log-normal distribution to the signal strength values at each location
+    Then, it calculates the probability of the wifi_reading at each location, and normalizes the values
+    """
+    data_points = read_dataset_file(dataset_filename, method='location')
+    location_estimate = {}
+    for location, bssid_rssi_dict in data_points.items():
+        pass
+    
+    # # Normalize the values
+    # total = sum(location_estimate.values())
+    # for location in location_estimate:
+    #     location_estimate[location] /= total
+    return location_estimate
 
 def location_estimate_avg(wifi_reading, dataset_filename):
     """
@@ -142,12 +168,13 @@ def plot_wifi_scan_pdf(wifi_scan, dataset_filename):
         dataset_filename: string, the name of the dataset file
     """
     location_estimate = location_estimate_avg(wifi_scan.networks, dataset_filename)
+    # location_estimate = location_estimate_naive_bayes(wifi_scan.networks, dataset_filename)
     x, y = zip(*location_estimate.keys())
     probabilities = np.fromiter(location_estimate.values(), dtype=float)#location_estimate.values()
 
     xi = np.linspace(min(x), max(x), 100)
     yi = np.linspace(min(y), max(y), 100)
-    zi = griddata((x, y), probabilities, (xi[None, :], yi[:, None]), method='cubic')
+    zi = griddata((x, y), probabilities, (xi[None, :], yi[:, None]), method='cubic') #(100,100)
 
     # Create the heatmap
     plt.figure(figsize=(8, 6))
@@ -156,13 +183,19 @@ def plot_wifi_scan_pdf(wifi_scan, dataset_filename):
     plt.xlabel('X Coordinate')
     plt.ylabel('Y Coordinate')
     plt.title('Probability of Location given Wifi Scan')
+
+    # return the most likely location
+    ind = np.unravel_index(np.argmax(zi, axis=None), zi.shape)
+    most_likely_location = (xi[ind[1]], yi[ind[0]])
+    print(f'Most likely location: {most_likely_location}')
+    return most_likely_location
     
 def location_estimate_pdf(dataset_filename,method='MSE'):
     wifi = pywifi.PyWiFi()
     iface = wifi.interfaces()[0] # the Wi-Fi interface which we use to perform Wi-Fi operations (e.g. scan, connect, disconnect, ..
+    scan = wdc.collect_wifi_scan(iface)
 
     if method == 'MSE':
-        scan = wdc.collect_wifi_scan(iface)
         plot_wifi_scan_pdf(scan, dataset_filename)
 
 
@@ -190,9 +223,9 @@ if __name__ == "__main__":
     #     avg_rssi_heatmap(data_points_3, key)
     #     if i>n_plots:
     #         break
+    # plt.legend()
 
     # Generating RSSI heatmaps for the particular MAC Address
     #avg_rssi_heatmap(data_points, "cc:88:c7:41:b1:22:")
     #avg_rssi_heatmap(data_points, "cc:88:c7:42:9f:73:") 
-    plt.legend()
     plt.show()
