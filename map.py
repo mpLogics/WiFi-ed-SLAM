@@ -45,7 +45,6 @@ def read_dataset_file(filename, method='bssid'):
                 if method == 'bssid':
                     if bssid in data_points:
                         if (x,y) in data_points[bssid]:
-                            # TODO: change to numpy array
                             data_points[bssid][(x,y)].append(signal_strength)
                         else:
                             data_points[bssid][(x,y)] = [signal_strength]
@@ -93,34 +92,46 @@ def avg_rssi_heatmap(data_points, bssid):
 
 
 class NaiveBayesClassifier:
-    pass
-
-def location_estimate_naive_bayes(wifi_reading, dataset_filename):
-    """
-    args:
-        wifi_reading: list of WifiNetwork objects, 
-            where each one contains its bssid, ssid, and signal_strength
-        dataset_filename: string, the name of the dataset file
-    returns:
-        location_estimate: dictionary whose keys are the (x,y) tuples from data_points, 
-            and whose values are the probability that that location is the true location 
-            given the wifi_reading
-
-    This function calculates the probability distribution of 
-        P(this location is the true location | wifi reading)
-    It does this by fitting a log-normal distribution to the signal strength values at each location
-    Then, it calculates the probability of the wifi_reading at each location, and normalizes the values
-    """
-    data_points = read_dataset_file(dataset_filename, method='location')
-    location_estimate = {}
-    for location, bssid_rssi_dict in data_points.items():
-        pass
+    def __init__(self):
+        self.prior_distribution = {}
     
-    # # Normalize the values
-    # total = sum(location_estimate.values())
-    # for location in location_estimate:
-    #     location_estimate[location] /= total
-    return location_estimate
+    def craete_prior_distribution(self, data_points):
+        """
+        args:
+            data_points: dictionary whose keys are locations and whose and values are another dictionary
+                that has the bssid as the key and the list of signal strengths as the value
+        Fits a log-normal distribution to the recieved signal strength values at each location, for each bssid
+        The final prior distribution is a dictionary whose keys are locations in space, and whose values are
+        a parametrization of an N-dimensional log-normal distribution that is fit to the data_points, where N is the number of bssids
+        """
+        for location, bssid_rssi_dict in data_points.items():
+            pass
+
+    def location_estimate(self, wifi_reading):
+        """
+        args:
+            wifi_reading: list of WifiNetwork objects, 
+                where each one contains its bssid, ssid, and signal_strength
+        returns:
+            location_estimate: dictionary whose keys are the (x,y) tuples from data_points, 
+                and whose values are the probability that that location is the true location 
+                given the wifi_reading
+
+        This function calculates the probability distribution of 
+            P(this location is the true location | wifi reading)
+        It does this by caluculating the probability of the wifi_reading given the stored RSSI log-normal distribution at each location
+        Then, it normalizes the values
+        """
+        data_points = read_dataset_file(dataset_filename, method='location')
+        location_estimate = {}
+        for location, bssid_rssi_dict in data_points.items():
+            pass
+        
+        # # Normalize the values
+        # total = sum(location_estimate.values())
+        # for location in location_estimate:
+        #     location_estimate[location] /= total
+        return location_estimate
 
 def location_estimate_avg(wifi_reading, dataset_filename):
     """
@@ -142,7 +153,7 @@ def location_estimate_avg(wifi_reading, dataset_filename):
     data_points = read_dataset_file(dataset_filename, method='location')
     location_estimate = {}
     for location, bssid_rssi_dict in data_points.items():
-        diff_vector = [] 
+        diff_vector = [] # contains difference between the average and measured RSSI values for each bssid at this location
         for network in wifi_reading:
             if network.bssid in bssid_rssi_dict:
                 l = len(bssid_rssi_dict[network.bssid])
@@ -150,8 +161,16 @@ def location_estimate_avg(wifi_reading, dataset_filename):
                     avg_dataset_rssi = sum(bssid_rssi_dict[network.bssid])/l
                     diff = avg_dataset_rssi - network.signal_strength
                     diff_vector.append(diff)
-        sum_squares = sum([x**2 for x in diff_vector])
-        location_estimate[location] = sum_squares
+        # square the distance to get positive values and 
+        # take the inverse to weight closer points higher
+        for i in range(len(diff_vector)):
+            diff_vector[i] = diff_vector[i]**2 if diff_vector[i] > 0 else 0
+        max_diff = max(diff_vector)
+        for i in range(len(diff_vector)):
+            if diff_vector[i] ==0:
+                diff_vector[i] = max_diff
+        inv_sum_squares = sum(diff_vector) #sum([x**-2 for x in diff_vector])
+        location_estimate[location] = inv_sum_squares
 
     # normalize the values so they sum to 1
     total = sum(location_estimate.values())
@@ -203,7 +222,7 @@ if __name__ == "__main__":
     # Plot the probability that the wifi_scan was taken at each location present in the dataset
     location_estimate_pdf(DATASET_FILENAME_3,method='MSE')
     
-    # data_points_3 = read_dataset_file(DATASET_FILENAME_3)
+    data_points_3 = read_dataset_file(DATASET_FILENAME_3)
     # data_points_4 = read_dataset_file(DATASET_FILENAME_4)
 
     #plt.plot(data_points_3["cc:88:c7:41:b1:22:"][(0,-1)])
@@ -214,7 +233,7 @@ if __name__ == "__main__":
     #print(len(data_points_4))
     # print(data_points)
 
-    # # Make n plots of wifi visualizations
+    # Make n plots of wifi visualizations
     # n_plots = 5
     # i=0
     # for key in data_points_3.keys():

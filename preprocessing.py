@@ -88,3 +88,11 @@ class FilterData():
     def make_mac_sets(self,filenames):
         for file_ in filenames:
             self.filter_data(filename=file_)
+
+    def save_consistent_data_object(self):
+        "save processed temporal and spatial data to a file so that it can be quickly loaded later"
+        pass
+
+    def load_consistent_data_object(self, filename):
+        "load processed temporal and spatial data from a file"
+        pass
