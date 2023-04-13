@@ -1,3 +1,5 @@
+import pickle
+
 class FilteredData():
     '''
     Class for filtering the data files, extracting temporal and spatial data
@@ -10,8 +12,24 @@ class FilteredData():
                                    # that has the bssid as the key and the signal strengths list as the value
         self.data_by_bssid = {} # key is the bssid and value is another dictionary
                                 # that has the x,y coordinates as the key and the signal strengths list as the value
+        self.n_bssids = 0 
         self.coordinates = []
         self.filenames = filenames
+
+    def save_data(self, filename):
+        '''
+        Save the data in a pickle file
+        '''
+        with open(filename, 'wb') as fp:
+            pickle.dump(self, fp)
+
+    def load_data(self, filename):
+        '''
+        Load the data from a pickle file
+        '''
+        with open(filename, 'rb') as fp:
+            data = pickle.load(fp)
+        return data
 
     def update_mac_sets(self,filename):
         '''
@@ -64,6 +82,8 @@ class FilteredData():
         # go throught all files once to get consistent mac addresses
         for file_ in self.filenames:
             self.update_mac_sets(filename=file_)
+        self.n_bssids = len(self.consistent_mac_addresses)
+
         # go through again to fill in data structures
         for file_ in self.filenames:
             self.update_data_dicts(filename=file_)
@@ -141,6 +161,7 @@ if __name__== "__main__":
     ]
     fd = FilteredData(dataset_files)
     fd.filter_data()
-    print(len(fd.get_consistent_mac_addresses()))
-    print(fd.data_by_bssid["cc:88:c7:41:b1:22:"][(0,-1)])
+    fd.save_data('./data/filtered_data.pkl')
+    # print(len(fd.get_consistent_mac_addresses()))
+    # print(fd.data_by_bssid["cc:88:c7:41:b1:22:"][(0,-1)])
 

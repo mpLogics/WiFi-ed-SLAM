@@ -1,10 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+from scipy import stats
 import wifi_dataset_collection as wdc
 import pywifi
 from preprocessing import FilteredData
-
+import pickle
 """
 Create a heatmap of the Wi-Fi signal strength in a room from a dataset file
 The heatmap is multi-dimensional; each dimension represents a different Access Point (AP)
@@ -40,11 +41,11 @@ def avg_rssi_heatmap(data_points, bssid):
     plt.title(f'Signal Strength at {bssid}')
 
 
-class NaiveBayesClassifier:
+class NaiveBayesEstimator:
     def __init__(self):
-        self.prior_distribution = {}
-    
-    def craete_prior_distribution(self, data_points):
+        self.prior_distribution = {} # dictionary whose keys are locations and whose values are a parametrization of an N-dimensional log-normal distribution
+
+    def fit_lognormal(self, datapoints_by_location=None):
         """
         args:
             data_points: dictionary whose keys are locations and whose and values are another dictionary
@@ -53,10 +54,35 @@ class NaiveBayesClassifier:
         The final prior distribution is a dictionary whose keys are locations in space, and whose values are
         a parametrization of an N-dimensional log-normal distribution that is fit to the data_points, where N is the number of bssids
         """
-        for location, bssid_rssi_dict in data_points.items():
-            pass
+        # self.means = np.zeros(self.n_locations, self.n_bssids)  
+        # self.variances = np.zeros(self.n_locations, self.n_bssids, self.n_bssids)  
 
-    def location_estimate(self, wifi_reading, datapoints_by_location):
+        if datapoints_by_location is None:
+            self.load('./data/prior_distribution.pkl')
+        else:
+            for location, bssid_rssi_dict in datapoints_by_location.items():
+                self.prior_distribution[location] = {}
+                for bssid, rssi_list in bssid_rssi_dict.items():
+                    # (mu, sigma) = stats.lognorm.fit(rssi_list)
+                    if len(rssi_list) < 3:
+                        mean, var = rssi_list[0], 0.00000000001
+                    else:
+                        _ , mean, var = stats.lognorm.fit(rssi_list)
+                    print(f"loc: {location}, mean: {mean}, var: {var}")
+                    # print(mean, var)
+                    self.prior_distribution[location][bssid] = (mean, var) 
+            
+            self.save('./data/prior_distribution.pkl')
+
+    def save(self, filename):
+        with open(filename, 'wb') as f:
+            pickle.dump(self.prior_distribution, f)
+
+    def load(self, filename):
+        with open(filename, 'rb') as f:
+            self.prior_distribution = pickle.load(f)
+
+    def location_estimate(self, wifi_reading):
         """
         args:
             wifi_reading: list of WifiNetwork objects, 
@@ -72,13 +98,32 @@ class NaiveBayesClassifier:
         Then, it normalizes the values
         """
         location_estimate = {}
-        for location, bssid_rssi_dict in datapoints_by_location.items():
-            pass
-        
-        # # Normalize the values
-        # total = sum(location_estimate.values())
-        # for location in location_estimate:
-        #     location_estimate[location] /= total
+        n_locations_processed = 0
+
+        for location, bssid_fit_dict in self.prior_distribution.items():
+            # get the probability that the wifi_reading is from this location
+            log_odds = 0
+            for network in wifi_reading:
+                # print(f'Processing {network.bssid}')
+                if network.bssid in bssid_fit_dict:
+                    mu, sigma = bssid_fit_dict[network.bssid]
+                    mu = abs(mu)
+                    # z_score = (np.log(abs(network.bssid)) - mu) / (sigma * np.sqrt(2))
+                    # # find log probability using logarithmic cumulative distribution function
+                    # log_odds += stats.lognorm.logcdf(x, s, loc=loc, scale=scale)
+                    l = stats.lognorm.logpdf(abs(network.signal_strength), mu, sigma)
+                    if l != float('-inf') and l != float('-inf'): log_odds -= l 
+                    # print(f'Processing {network.bssid}, mu: {mu}, sigma: {sigma}, log_odds={log_odds}')
+                
+            location_estimate[location] = log_odds
+            n_locations_processed += 1
+        # print(f'Processed {n_locations_processed} locations')
+
+        # Normalize the values
+        total = sum(location_estimate.values())
+        for location in location_estimate:
+            location_estimate[location] /= total
+
         return location_estimate
 
 def location_estimate_avg(wifi_reading, datapoints_by_location):
@@ -127,15 +172,13 @@ def location_estimate_avg(wifi_reading, datapoints_by_location):
 
     return location_estimate
 
-def plot_wifi_scan_pdf(wifi_scan, datapoints_by_location):
+def plot_wifi_scan_pdf(wifi_scan, location_estimate):
     """
     Plot the probability that the wifi_scan was taken at each location present in the dataset
     args:
         wifi_scan: WifiScan object, containing a list of WifiNetwork objects (in wifi_scan.networks)
         dataset_filename: string, the name of the dataset file
     """
-    location_estimate = location_estimate_avg(wifi_scan.networks, datapoints_by_location)
-    # location_estimate = location_estimate_naive_bayes(wifi_scan.networks, dataset_filename)
     x, y = zip(*location_estimate.keys())
     probabilities = np.fromiter(location_estimate.values(), dtype=float)#location_estimate.values()
 
@@ -157,15 +200,27 @@ def plot_wifi_scan_pdf(wifi_scan, datapoints_by_location):
     print(f'Most likely location: {most_likely_location}')
     return most_likely_location
     
-def location_estimate_pdf(datapoints_by_location,method='MSE'):
+def location_estimate_pdf(datapoints_by_location,method='MSE', plot=True):
     wifi = pywifi.PyWiFi()
     iface = wifi.interfaces()[0] # the Wi-Fi interface which we use to perform Wi-Fi operations (e.g. scan, connect, disconnect, ..
     scan = wdc.collect_wifi_scan(iface)
 
+    location_estimate = {}
     if method == 'MSE':
-        plot_wifi_scan_pdf(scan, datapoints_by_location)
+        location_estimate = location_estimate_avg(scan.networks, datapoints_by_location)
     elif method == 'NB':
-        pass
+        nb = NaiveBayesEstimator()
+        # nb.fit_lognormal(datapoints_by_location)
+        nb.fit_lognormal() # if you've already fit the data, you can just load it from the pickle file
+
+        location_estimate = nb.location_estimate(scan.networks)
+
+    if plot: plot_wifi_scan_pdf(scan, location_estimate)
+
+    return location_estimate
+
+
+
 
 
 if __name__ == "__main__":
@@ -175,20 +230,21 @@ if __name__ == "__main__":
         './data/dataset_5_4.txt'
     ]
     fd = FilteredData(dataset_files)
-    fd.filter_data()
+    fd.filter_data() # if you haven't saved the filtered data before
+    # fd.load_data('./data/filtered_data.pkl')
 
     # Plot the probability that the wifi_scan was taken at each location present in the dataset
-    location_estimate_pdf(fd.data_by_location,method='MSE')
+    # location_estimate_pdf(fd.data_by_location,method='MSE')
+    location_estimate_pdf(fd.data_by_location,method='NB')
 
-
-    # Make n plots of wifi visualizations
-    n_plots = 5
-    i=0
-    for key in fd.data_by_bssid.keys():
-        i+=1
-        # plt.plot(fd.data_by_bssid[key][(3,0)],label = key)
-        avg_rssi_heatmap(fd.data_by_bssid, key)
-        if i>n_plots:
-            break
+    # # Make n plots of wifi visualizations
+    # n_plots = 5
+    # i=0
+    # for key in fd.data_by_bssid.keys():
+    #     i+=1
+    #     # plt.plot(fd.data_by_bssid[key][(3,0)],label = key)
+    #     avg_rssi_heatmap(fd.data_by_bssid, key)
+    #     if i>n_plots:
+    #         break
 
     plt.show()
