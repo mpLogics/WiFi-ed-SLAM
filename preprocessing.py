@@ -13,7 +13,7 @@ class FilteredData():
         self.coordinates = []
         self.filenames = filenames
 
-    def create_mac_sets(self,filename):
+    def update_mac_sets(self,filename):
         '''
         Update the set of unique mac addresses and the set of consistent mac addresses
         @args: filename: The complete path of a single dataset (.txt) file
@@ -36,10 +36,10 @@ class FilteredData():
             self.coordinates = list(datapoints[list(mac_addresses)[0]].keys())
 
     
-    def create_data_dicts(self,filename):
+    def update_data_dicts(self,filename):
         '''
         Given that we have created consistent_mac addresses across all datafiles, 
-        create the dictionaries :
+        update the dictionaries :
         '''
         datapoints = self.read_dataset_file(filename,method='bssid')    
         
@@ -63,10 +63,10 @@ class FilteredData():
         '''
         # go throught all files once to get consistent mac addresses
         for file_ in self.filenames:
-            self.create_mac_sets(filename=file_)
+            self.update_mac_sets(filename=file_)
         # go through again to fill in data structures
         for file_ in self.filenames:
-            self.create_data_dicts(filename=file_)
+            self.update_data_dicts(filename=file_)
     
     def get_consistent_mac_addresses(self):
         return self.consistent_mac_addresses
