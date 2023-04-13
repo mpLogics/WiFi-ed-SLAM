@@ -1,6 +1,3 @@
-
-NUM_READINGS_PER_BSSID=5
-
 class FilteredData():
     '''
     Class for filtering the data files, extracting temporal and spatial data
@@ -16,7 +13,7 @@ class FilteredData():
         self.coordinates = []
         self.filenames = filenames
 
-    def make_mac_sets(self,filename):
+    def create_mac_sets(self,filename):
         '''
         Update the set of unique mac addresses and the set of consistent mac addresses
         @args: filename: The complete path of a single dataset (.txt) file
@@ -39,7 +36,7 @@ class FilteredData():
             self.coordinates = list(datapoints[list(mac_addresses)[0]].keys())
 
     
-    def structure_space_time(self,filename):
+    def create_data_dicts(self,filename):
         '''
         Given that we have created consistent_mac addresses across all datafiles, 
         create the dictionaries :
@@ -66,10 +63,10 @@ class FilteredData():
         '''
         # go throught all files once to get consistent mac addresses
         for file_ in self.filenames:
-            self.make_mac_sets(filename=file_)
+            self.create_mac_sets(filename=file_)
         # go through again to fill in data structures
         for file_ in self.filenames:
-            self.structure_space_time(filename=file_)
+            self.create_data_dicts(filename=file_)
     
     def get_consistent_mac_addresses(self):
         return self.consistent_mac_addresses
