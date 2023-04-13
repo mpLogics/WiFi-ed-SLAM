@@ -109,7 +109,7 @@ class FilteredData():
                         datapoints = self.add_to_dict(datapoints, bssid, (x,y), signal_strength)
  
                     elif method == 'location':
-                        self.add_to_dict(datapoints, (x,y), bssid, signal_strength)
+                        datapoints = self.add_to_dict(datapoints, (x,y), bssid, signal_strength)
 
         return datapoints
     
