@@ -15,6 +15,7 @@ class FilteredData():
         self.n_bssids = 0 
         self.coordinates = []
         self.filenames = filenames
+        
 
     def save_data(self, filename):
         '''
@@ -53,11 +54,47 @@ class FilteredData():
         if not self.coordinates:
             self.coordinates = list(datapoints[list(mac_addresses)[0]].keys())
 
-    
+    def update_data_dicts_with_padding(self,filename):
+        '''
+        Given that we have created consistent_mac addresses across all datafiles, 
+        update the dictionaries.
+        @args: filename: The complete path of a single dataset (.txt) file
+        '''
+        datapoints = self.read_dataset_file(filename,method='bssid')    
+        
+        # go through consistent mac addresses and coordinates to fill in bssid_data and temporal_data
+        max_len_bssid = -1
+        max_len_loc = -1
+        for bssid in self.consistent_mac_addresses:
+            for loc in self.coordinates:
+                # fill in self.data_by_bssid
+                if bssid in datapoints: # true by construction
+                    if loc in datapoints[bssid]:
+                        self.add_to_dict(self.data_by_bssid,bssid,loc,datapoints[bssid][loc])
+                        self.add_to_dict(self.data_by_location,loc,bssid,datapoints[bssid][loc])
+                    else:
+                        self.add_to_dict(self.data_by_bssid,bssid,loc,[])
+                        self.add_to_dict(self.data_by_location,loc,bssid,[])
+                
+                if max_len_bssid < len(self.data_by_bssid[bssid][loc]):
+                    max_len_bssid = len(self.data_by_bssid[bssid][loc])
+                
+                if max_len_loc < len(self.data_by_location[loc][bssid]):
+                    max_len_loc = len(self.data_by_location[loc][bssid])
+
+        for bssid in self.consistent_mac_addresses:
+            for loc in self.coordinates:
+                for i in range(len(self.data_by_bssid[bssid][loc]),(max_len_bssid)):
+                    self.data_by_bssid[bssid][loc].append(-200)
+                for i in range(len(self.data_by_location[loc][bssid]),(max_len_loc)):
+                    self.data_by_location[loc][bssid].append(-200)
+        
+
     def update_data_dicts(self,filename):
         '''
         Given that we have created consistent_mac addresses across all datafiles, 
-        update the dictionaries :
+        update the dictionaries.
+        @args: filename: The complete path of a single dataset (.txt) file
         '''
         datapoints = self.read_dataset_file(filename,method='bssid')    
         
@@ -70,7 +107,23 @@ class FilteredData():
                         self.add_to_dict(self.data_by_bssid,bssid,loc,datapoints[bssid][loc])
                         self.add_to_dict(self.data_by_location,loc,bssid,datapoints[bssid][loc])
                 
-    
+    def filter_data_padding(self):
+        '''
+        Driver function that fills in all FilteredData member variables 
+        from a list of dataset filenames 
+        
+        @args 
+        filenames - list of path values for all files in the dataset
+        '''
+        # go throught all files once to get consistent mac addresses
+        for file_ in self.filenames:
+            self.update_mac_sets(filename=file_)
+        self.n_bssids = len(self.consistent_mac_addresses)
+
+        # go through again to fill in data structures
+        for file_ in self.filenames:
+            self.update_data_dicts_with_padding(filename=file_)
+
     def filter_data(self):
         '''
         Driver function that fills in all FilteredData member variables 
