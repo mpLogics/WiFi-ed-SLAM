@@ -2,6 +2,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+import simulate_imu
 
 def idw_interpolation(x, y, xi, yi, avg_signal_strengths, p=2):
     """
@@ -37,6 +38,7 @@ def idw_interpolation(x, y, xi, yi, avg_signal_strengths, p=2):
 
     return zi
 
+# slightly shift from given ground truth
 def groundtruth_shift(x, y):
     shift_dist_max = min((max(x) - min(x)) / 15, (max(y) - min(y)) / 15)
     shift_dist_min = min((max(x) - min(x)) / 30, (max(y) - min(y)) / 30)
@@ -56,6 +58,7 @@ def groundtruth_shift(x, y):
 
     return shifted_x, shifted_y
 
+# simulate multiple RSSI layer distribution matching belief
 def simulate_pdf(x, y):
     # shift ground truth
     groundtruthX = x    # recording the groundtruth
@@ -119,6 +122,113 @@ def simulate_pdf(x, y):
         plt.title(f'Possibility Distribution')
         plt.legend()
         plt.show()
+
+# from IMU turning (left/right) direction to global coordinate direction
+def head_to_next(current_head_to, turn):
+    next_head_to = []
+
+    if current_head_to == [1, 0]:
+        if turn == 0:   # left
+            next_head_to = [0, 1]
+        elif turn == 1: # right
+            next_head_to = [0, -1]
+
+    elif current_head_to == [-1, 0]:
+        if turn == 0:
+            next_head_to = [0, -1]
+        elif turn == 1:
+            next_head_to = [0, 1]
+
+    elif current_head_to == [0, 1]:
+        if turn == 0:
+            next_head_to = [-1, 0]
+        elif turn == 1:
+            next_head_to = [1, 0]
+
+    elif current_head_to == [0, -1]:
+        if turn == 0:
+            next_head_to = [1, 0]
+        elif turn == 1:
+            next_head_to = [-1, 0]
+
+    return next_head_to
+        
+# transfer IMU control command to actual trajectory
+def imu_control_coordinate_transfer(turns, dists):
+    tr_x = [0]
+    tr_y = [0]
+    current_pos_x = 0
+    current_pos_y = 0
+    current_head_to = [1, 0]
+
+    for i in range(len(turns)):
+        # turn: 1 right / 0 left .. starting from pointing to +x .. turn pi/2
+        # # simulate_imu
+        # simulate_imu.turn(turns[i])
+        # simulate_imu.straight(dists[i])
+
+        # transfer into x-y plane coordinate
+        current_head_to = head_to_next(current_head_to, turns[i])
+        current_pos_x += current_head_to[0] * dists[i]
+        current_pos_y += current_head_to[1] * dists[i]
+        tr_x.append(current_pos_x)
+        tr_y.append(current_pos_y)
+
+    return tr_x, tr_y
+
+# particle filter update and resample step
+def particle_update(parti_x, parti_y, possi_x, possi_y, possi_z, parti_weights): # input [x, y], first time wight[] is uniform
+    likelihoods = []
+    for i in range(len(parti_x)):
+        # find surround points
+        for j in range(len(possi_x)):
+            if possi_x[j] > parti_x[i]:
+                border_x_r = j
+                break
+        for k in range(len(possi_y)):
+            if possi_y[k] > parti_y[i]:
+                border_y_r = k
+                break
+        
+        right_x = possi_x[border_x_r]
+        right_y = possi_y[border_y_r]
+        left_x = possi_x[border_x_r - 1]
+        left_y = possi_y[border_y_r - 1]
+
+        s_points = [[left_x, left_y, possi_z[border_x_r - 1, border_y_r - 1]], [left_x, right_y, possi_z[border_x_r - 1, border_y_r]], [right_x, left_y, possi_z[border_x_r, border_y_r - 1]], [right_x, right_y, possi_z[border_x_r, border_y_r]]]
+
+        # interpolation - get current particle possibility value: parti_z
+        idw_weight = []
+        for s_point in s_points:
+            dist = np.sqrt(np.square(s_point[0] - parti_x[i]) + np.square(s_point[1] - parti_y[i]))
+
+            if dist < 1e-7:
+                parti_z = s_point[2]
+                break_flag = True
+                break
+            else:
+                idw_weight.append(np.power(dist, -2))
+                
+        if break_flag == False:
+            possibility_value = []
+            for s_point in s_points:
+                possibility_value.append(s_point[2])
+            parti_z = np.sum(np.multiply(idw_weight, possibility_value)) / np.sum(idw_weight)
+
+        likelihoods.append(parti_z)
+
+    # update step
+    parti_weights *= likelihoods / np.sum(likelihoods)
+
+    # resample
+    indices = np.random.choice(len(parti_x), size=len(parti_x), p=parti_weights)
+    parti_x = parti_x[indices]
+    parti_y = parti_y[indices]
+    parti_weights = np.ones_like(parti_weights) / len(parti_weights)
+
+    return parti_x, parti_y, parti_weights
+        
+        
 
 if __name__ == "__main__":     
     trX = [0, 15, 20, 27, 37, 44]
