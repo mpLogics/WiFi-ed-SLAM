@@ -1,4 +1,57 @@
 import pickle
+import torch
+
+class Data():
+    def __init__(self,consistent_mac_address,data_by_bssid,data_by_location):
+        self.consistent_mac_address = consistent_mac_address
+        self.data_by_bssid = data_by_bssid
+        self.data_by_location = data_by_location
+
+    def prep_infer_data(self,networks,input_signal):
+        # pywifi.profile.Profile object attributes:
+        # 'akm', 'auth', 'bssid', 'cipher', 'freq', 'id', 'key', 'process_akm', 'signal', 'ssid'
+
+        for profile in networks:
+            if profile.bssid in self.consistent_mac_address:
+                input_signal[0,self.consistent_mac_address.index(profile.bssid)] = profile.signal
+
+        # Padding with -200 values 
+        for i in range(len(self.consistent_mac_address)):
+            if input_signal[0,i]==0:
+                input_signal[0,i] = -200
+        return input_signal
+    
+    def make_data(self,coordinates,mode='train'):
+
+        NUM_POINTS_IN_SPACE = len(coordinates)
+        max_reading_len = len(self.data_by_location[(0,0)][list(self.data_by_bssid.keys())[0]])
+        coord_encodings = torch.Tensor([i for i in range(NUM_POINTS_IN_SPACE)])
+        # Mapping Integer Encodings to Coordinate Space
+        i=0
+        coords_to_encodings={}
+        encodings_to_coords={}
+        
+        for coord in coordinates:
+            coords_to_encodings[coord] = torch.Tensor([coord_encodings[i]])
+            encodings_to_coords[(int)(coord_encodings[i])] = coord
+            i+=1
+
+        total_mac_address = len(self.consistent_mac_address)
+
+        if mode=='train':
+            train_data = torch.empty(0,total_mac_address + 1)
+            for coord in coordinates:
+                x_temp = torch.empty((0,max_reading_len))
+                for mac_address in self.consistent_mac_address:
+                    reading = torch.Tensor(self.data_by_location[coord][mac_address]).reshape(1,-1)
+                    x_temp = torch.cat((x_temp,reading),dim=0)
+                
+                for i in range(max_reading_len):
+                    x_temp_reshaped = torch.cat((x_temp[:,i],coords_to_encodings[coord]))
+                    x_temp_reshaped = torch.unsqueeze(x_temp_reshaped,0)
+                    train_data = torch.cat((train_data,x_temp_reshaped),dim=0)
+            return train_data, coords_to_encodings, encodings_to_coords
+        return coords_to_encodings, encodings_to_coords
 
 class FilteredData():
     '''
@@ -31,7 +84,7 @@ class FilteredData():
         with open(filename, 'rb') as fp:
             data = pickle.load(fp)
         return data
-
+    
     def update_mac_sets(self,filename):
         '''
         Update the set of unique mac addresses and the set of consistent mac addresses

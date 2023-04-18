@@ -193,7 +193,7 @@ def plot_wifi_scan_pdf(wifi_scan, location_estimate):
     plt.xlabel('X Coordinate')
     plt.ylabel('Y Coordinate')
     plt.title('Probability of Location given Wifi Scan')
-
+    plt.show()
     # return the most likely location
     ind = np.unravel_index(np.argmax(zi, axis=None), zi.shape)
     most_likely_location = (xi[ind[1]], yi[ind[0]])
@@ -210,8 +210,10 @@ def location_estimate_pdf(datapoints_by_location,method='MSE', plot=True):
         location_estimate = location_estimate_avg(scan.networks, datapoints_by_location)
     elif method == 'NB':
         nb = NaiveBayesEstimator()
-        # nb.fit_lognormal(datapoints_by_location)
-        nb.fit_lognormal() # if you've already fit the data, you can just load it from the pickle file
+        try:
+            nb.fit_lognormal() # if you've already fit the data, you can just load it from the pickle file
+        except:
+            nb.fit_lognormal(datapoints_by_location)
 
         location_estimate = nb.location_estimate(scan.networks)
 
