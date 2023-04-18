@@ -2,6 +2,8 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+from sklearn.mixture import GaussianMixture
+import csv
 import simulate_imu
 
 def idw_interpolation(x, y, xi, yi, avg_signal_strengths, p=2):
@@ -40,8 +42,8 @@ def idw_interpolation(x, y, xi, yi, avg_signal_strengths, p=2):
 
 # slightly shift from given ground truth
 def groundtruth_shift(x, y):
-    shift_dist_max = min((max(x) - min(x)) / 15, (max(y) - min(y)) / 15)
-    shift_dist_min = min((max(x) - min(x)) / 30, (max(y) - min(y)) / 30)
+    shift_dist_max = min((max(x) - min(x)) / 40, (max(y) - min(y)) / 40)
+    shift_dist_min = min((max(x) - min(x)) / 80, (max(y) - min(y)) / 80)
 
     shifted_x = []
     shifted_y = []
@@ -63,7 +65,7 @@ def simulate_pdf(x, y):
     # shift ground truth
     groundtruthX = x    # recording the groundtruth
     groundtruthY = y
-    x, y = groundtruth_shift(x, y)
+    # x, y = groundtruth_shift(x, y)
 
     # obtain trajectary area
     leftX = min(x)
@@ -71,13 +73,19 @@ def simulate_pdf(x, y):
     leftY = min(y)
     rightY = max(y)
 
+    #  total interpolation x, y, z and local maximas
+    whole_xs = []
+    whole_ys = []
+    whole_zs = []
+    whole_local_max_numbs = []
+
     for i in range(len(x)):
         global_max = [x[i], y[i]]
-        local_max_num = random.randint(3, 7)
+        local_max_num = random.randint(1, 2)
         existing_points_num = random.randint(20, 30)
 
-        spead_dorder = 5        #local maxima may outside of map border
-        dist = 8        #local maxima should at least away from global one this distance
+        spead_dorder = 0.5        #local maxima may outside of map border
+        dist = 0.2        #local maxima should at least away from global one this distance
 
         existing_points = []    # x, y, possibility
 
@@ -111,17 +119,89 @@ def simulate_pdf(x, y):
         interp_zi = idw_interpolation(zi1, zi2, interp_xi, interp_yi, zi3, 2)
         # interp_zi = griddata((existing_points[:][0], existing_points[:][1]), existing_points[:][2], (interp_xi, interp_yi), method='cubic')
 
-        # plot
-        plt.figure()
-        plt.contourf(interp_xi, interp_yi, interp_zi, levels=15, cmap='inferno')
-        plt.plot(groundtruthX, groundtruthY)
-        plt.plot(groundtruthX, groundtruthY,'x')
-        plt.colorbar(label='Possibility')
-        plt.xlabel('X Coordinate')
-        plt.ylabel('Y Coordinate')
-        plt.title(f'Possibility Distribution')
-        plt.legend()
-        plt.show()
+        # # plot
+        # # plt.figure(figsize=(16,6))
+        # plt.figure(figsize=(8, 6))
+        # # plt.subplot(121)
+        # plt.contourf(interp_xi, interp_yi, interp_zi, levels=15, cmap='inferno')
+        # plt.plot(groundtruthX, groundtruthY, label='Ground Truth', color='darkgreen')
+        # plt.plot(groundtruthX, groundtruthY,'x', color='cyan')
+        # plt.colorbar(label='Possibility')
+        # plt.xlabel('X Coordinate')
+        # plt.ylabel('Y Coordinate')
+        # plt.title(f'Possibility Distribution')
+        # plt.legend()
+
+        whole_xs.append(interp_xi)
+        whole_ys.append(interp_yi)
+        whole_zs.append(interp_zi)
+        whole_local_max_numbs.append(local_max_num)
+
+    return whole_xs, whole_ys, whole_zs, whole_local_max_numbs
+    
+# Gaussian Mixture Model (GMM) extraction -- return each gaussian model's average coordinate and covariance
+def gmm_extr(inter_xi, inter_yi, inter_zi, local_max_num, threshold = 0.48):
+    multi_model = remove_low_possibility(inter_xi, inter_yi, inter_zi, threshold)
+    multi_model = np.array(multi_model)
+
+    # apply GMM to get predicted label -- for plot
+    label_pred = GaussianMixture(n_components=local_max_num).fit_predict(multi_model)
+
+    # apply GMM to get each model's average & covariance
+    gm = GaussianMixture(n_components=local_max_num, random_state=0).fit(multi_model)
+    print("Each average located at: \n")
+    print(gm.means_)
+    print("\nEach corresponding covariance: \n")
+    print(gm.covariances_)
+
+    # # plot
+    # plt.figure(figsize=(6.4, 6))
+    # # plt.subplot(122)
+    # plt.xlim(min(inter_xi), max(inter_xi))
+    # plt.ylim(min(inter_yi), max(inter_yi))
+    # plt.scatter(multi_model[:, 0], multi_model[:, 1], marker=',', c=label_pred)
+    # plt.scatter(np.array(gm.means_)[:, 0], np.array(gm.means_)[:, 1], marker='x')
+    # # plt.colorbar()
+    # plt.xlabel('X Coordinate')
+    # plt.ylabel('Y Coordinate')
+    # plt.legend()
+    # plt.title("GMM Classified Gaussian Mixture Models")
+    # # plt.show()
+
+    return gm.means_, gm.covariances_   # one to one corresponding
+
+# remove all the low possibility points and only get points coordinates that possibility higher than the threshold
+def remove_low_possibility(inter_xi, inter_yi, inter_zi, threshold):
+    coord = []
+    for index_yi in range(len(inter_yi)):
+        for index_xi in range(len(inter_xi)):
+            if inter_zi[index_yi][index_xi] >= threshold:
+                coord.append([inter_xi[index_xi], inter_yi[index_yi]])
+
+    return coord
+
+# Given IMU estimated location, combine with the RSSI possibility GMM to obtain corrected location
+rssi_cts = []
+def rssi_correct_imu(imu_es, imu_cov, multi_model_means, multi_model_covs):
+    current_min_dist = 1e7
+    for i in range(len(multi_model_means)):
+        dist = np.linalg.norm([imu_es[0] - multi_model_means[i][0], imu_es[1] - multi_model_means[i][1]])
+        if dist < current_min_dist:
+            current_min_dist = dist
+            rssi_ct = list(multi_model_means[i])  #for plot
+            nearest_model_center = np.array(multi_model_means[i]).reshape(2, 1)
+            nearest_model_cov = np.array(multi_model_covs[i])
+    
+    rssi_cts.append(rssi_ct)   #global variable
+    print(rssi_cts)
+    # calculate corrected location using center and cov
+    imu_es = imu_es.reshape(2, 1)
+    kal_gain = imu_cov @ np.linalg.inv(imu_cov + nearest_model_cov)
+    corrected_pos = imu_es + 0.4 * kal_gain @ (nearest_model_center - imu_es)
+
+    print(corrected_pos)
+
+    return corrected_pos, rssi_ct
 
 # from IMU turning (left/right) direction to global coordinate direction
 def head_to_next(current_head_to, turn):
@@ -231,12 +311,95 @@ def particle_update(parti_x, parti_y, possi_x, possi_y, possi_z, parti_weights):
         
 
 if __name__ == "__main__":     
-    trX = [0, 15, 20, 27, 37, 44]
-    trY = [0, 8, 13, 30, 27, 15]
+    # read the ground truth and imu data
+    gt_file = 'continuous_gt_1.csv'
+    imu_file = 'continuous_imu_pf_1.csv'
 
-    # trX, trY = groundtruth_shift(trX, trY)
-    # print(str(trX) + "\n" + str(trY))
+    trX = []
+    trY = []
+    trTH = []
 
-    simulate_pdf(trX, trY)
+    imu_es_centers = []  # imu data needs to be imported
+    imu_es_covs = []
+    # read ground truth
+    with open(gt_file, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+        for row in spamreader:
+            trX.append(float(row[0]))
+            trY.append(float(row[1]))
+            trTH.append(float(row[2]))
+            print('\n')
+            print(row[1], row[2])
+
+    # read imu data
+    with open(imu_file, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+        for row in spamreader:
+            imu_es_centers.append([float(row[1]), float(row[2]), float(row[3])])
+
+            temp_cov = []
+            for i in range(9):
+                temp_cov.append(float(row[i + 4]))
+
+            temp_cov = np.array(temp_cov).reshape(3, 3)
+            imu_es_covs.append(temp_cov)
+            print('\n')
+            print(row[1], row[2])
+        imu_es_centers = np.array(imu_es_centers)
+        # imu_es_covs = np.array(imu_es_covs)
+
+    whole_x, whole_y, whole_z, whole_local_max_nums = simulate_pdf(trX, trY)
+
+    corrected_poses = [np.array([imu_es_centers[0][0], imu_es_centers[0][1]]).reshape(2, 1)]
+    rssi_cts = []
+
+    for i in range(1, len(whole_x)):
+        next_center = np.array(corrected_poses[i - 1]).reshape(2, 1) + np.array([imu_es_centers[i][0] - imu_es_centers[i - 1][0], imu_es_centers[i][1] - imu_es_centers[i - 1][1]]).reshape(2, 1)
+
+        print(np.array(corrected_poses[i - 1]))
+        print(np.array([imu_es_centers[i][0] - imu_es_centers[i - 1][0], imu_es_centers[i][1] - imu_es_centers[i - 1][1]]))
+
+        wifi_centers, wifi_covs = gmm_extr(whole_x[i], whole_y[i], whole_z[i], whole_local_max_nums[i], threshold=0.55)
+        corrected_pos, c_ct = rssi_correct_imu(next_center, imu_es_covs[i][:2, :2], wifi_centers, wifi_covs)
+        # corrected_pos, c_ct = rssi_correct_imu(np.array([trX[i], trY[i]]).reshape(2, 1), imu_es_covs[i][:2, :2], wifi_centers, wifi_covs)
+        
+        corrected_poses.append(corrected_pos)
+        print("now: " + str(i) + ", " + str(len(whole_x)))
+
+    corrected_poses = np.array(corrected_poses)
+
+    # plot
+    rssi_cts = np.array(rssi_cts)
+    plt.figure()
+    plt.plot(trX, trY, label='Ground Truth')
+    plt.plot(imu_es_centers[:, 0], imu_es_centers[:, 1], label='IMU Estimation')
+    plt.plot(corrected_poses[:, 0], corrected_poses[:, 1], label='Corrected Trajectory')
+    # plt.scatter(rssi_cts[:, 0], rssi_cts[:, 1], marker='x')
+    # plt.scatter(imu_es_centers[:, 0], imu_es_centers[:, 1], marker='x', color='red')
+    plt.legend()
+    plt.show()
 
 
+    # # For testing the RSSI IMU correction
+    # imu_es_center = [40.99702809, 39.98111026, -0.15718418]
+    # imu_es_cov = np.array([[2.59943093e-01, 1.49086640e-02, 2.16506722e-04], 
+    #             [1.49086640e-02, 2.52513672e-01, -1.85946646e-03], 
+    #             [2.16506722e-04, -1.85946646e-03, 3.81160943e-03]])
+    
+    # centers = [[42.13483032, 48.58744849], 
+    #            [75.34173564, 23.3605504], 
+    #            [17.52775467, 72.00524633], 
+    #            [60.16556563, 20.96756063]]
+    # covs = [[[1.40474574e+01, -5.68109855e+00], 
+    #         [-5.68109855e+00, 9.55252954e+00]], 
+
+    #         [[ 1.00000000e-06, 2.12045811e-27], 
+    #         [ 2.12045811e-27, 4.48950761e-01]], 
+
+    #         [[ 1.25342215e+00, 1.26543986e-14], 
+    #         [ 1.26760799e-14, 1.72396808e+00]], 
+
+    #         [[ 2.31286145e+00, -2.56731084e-16], 
+    #         [-2.78817369e-16, 1.90574692e+00]]]
+    
+    # rssi_correct_imu(np.array([imu_es_center[0], imu_es_center[1]]).reshape(2, 1), imu_es_cov[:2, :2], centers, covs)
