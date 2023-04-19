@@ -42,8 +42,8 @@ def idw_interpolation(x, y, xi, yi, avg_signal_strengths, p=2):
 
 # slightly shift from given ground truth
 def groundtruth_shift(x, y):
-    shift_dist_max = min((max(x) - min(x)) / 40, (max(y) - min(y)) / 40)
-    shift_dist_min = min((max(x) - min(x)) / 80, (max(y) - min(y)) / 80)
+    shift_dist_max = min((max(x) - min(x)) / 20, (max(y) - min(y)) / 20)
+    shift_dist_min = min((max(x) - min(x)) / 40, (max(y) - min(y)) / 40)
 
     shifted_x = []
     shifted_y = []
@@ -65,7 +65,7 @@ def simulate_pdf(x, y):
     # shift ground truth
     groundtruthX = x    # recording the groundtruth
     groundtruthY = y
-    # x, y = groundtruth_shift(x, y)
+    x, y = groundtruth_shift(x, y)
 
     # obtain trajectary area
     leftX = min(x)
@@ -123,7 +123,7 @@ def simulate_pdf(x, y):
         # # plt.figure(figsize=(16,6))
         # plt.figure(figsize=(8, 6))
         # # plt.subplot(121)
-        # plt.contourf(interp_xi, interp_yi, interp_zi, levels=15, cmap='inferno')
+        # plt.contourf(interp_xi, interp_yi, interp_zi, levels=15, cmap='GnBu')
         # plt.plot(groundtruthX, groundtruthY, label='Ground Truth', color='darkgreen')
         # plt.plot(groundtruthX, groundtruthY,'x', color='cyan')
         # plt.colorbar(label='Possibility')
@@ -166,7 +166,7 @@ def gmm_extr(inter_xi, inter_yi, inter_zi, local_max_num, threshold = 0.48):
     # plt.ylabel('Y Coordinate')
     # plt.legend()
     # plt.title("GMM Classified Gaussian Mixture Models")
-    # # plt.show()
+    # plt.show()
 
     return gm.means_, gm.covariances_   # one to one corresponding
 
@@ -314,13 +314,18 @@ if __name__ == "__main__":
     # read the ground truth and imu data
     gt_file = 'continuous_gt_1.csv'
     imu_file = 'continuous_imu_pf_1.csv'
+    pf_file = 'particle_filter_pose_1.csv'
 
-    trX = []
+    trX = []    # ground truth
     trY = []
     trTH = []
 
     imu_es_centers = []  # imu data needs to be imported
     imu_es_covs = []
+
+    pf_es_centers_x = []  # particle filter estimate
+    pf_es_centers_y = []
+
     # read ground truth
     with open(gt_file, newline='') as csvfile:
         spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
@@ -350,6 +355,15 @@ if __name__ == "__main__":
 
     whole_x, whole_y, whole_z, whole_local_max_nums = simulate_pdf(trX, trY)
 
+    # load particle filter data
+    with open(pf_file, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+        for row in spamreader:
+            pf_es_centers_x.append(float(row[1]))
+            pf_es_centers_y.append(float(row[2]))
+            print('\n')
+            print(row[1], row[2])
+
     corrected_poses = [np.array([imu_es_centers[0][0], imu_es_centers[0][1]]).reshape(2, 1)]
     rssi_cts = []
 
@@ -368,14 +382,35 @@ if __name__ == "__main__":
 
     corrected_poses = np.array(corrected_poses)
 
+    # calculate RMSE
+    mse_imu = 0
+    mse_kf = 0
+    mse_pf = 0
+
+    for i in range(len(corrected_poses)):
+        mse_imu += np.square(np.linalg.norm([trX[i] - imu_es_centers[i][0], trY[i] - imu_es_centers[i][1]])) / len(trX)
+        mse_kf += np.square(np.linalg.norm([trX[i] - corrected_poses[i][0], trY[i] - corrected_poses[i][1]])) / len(trX)
+        mse_pf += np.square(np.linalg.norm([trX[i] - pf_es_centers_x[i], trY[i] - pf_es_centers_y[i]])) / len(trX)
+
+    rmse_imu = np.power(mse_imu, 0.5)
+    rmse_kf = np.power(mse_kf, 0.5)
+    rmse_pf = np.power(mse_pf, 0.5)
+    print("RMSE of IMU: " + str(rmse_imu))
+    print("RMSE of Kalman Filter: " + str(rmse_kf))
+    print("RMSE of Particle Filter: " + str(rmse_pf))
+
     # plot
     rssi_cts = np.array(rssi_cts)
     plt.figure()
     plt.plot(trX, trY, label='Ground Truth')
     plt.plot(imu_es_centers[:, 0], imu_es_centers[:, 1], label='IMU Estimation')
-    plt.plot(corrected_poses[:, 0], corrected_poses[:, 1], label='Corrected Trajectory')
+    plt.plot(corrected_poses[:, 0], corrected_poses[:, 1], label='Kalman Filter Estimation')
+    plt.plot(pf_es_centers_x, pf_es_centers_y, label='Particle Filter Estimation')
     # plt.scatter(rssi_cts[:, 0], rssi_cts[:, 1], marker='x')
     # plt.scatter(imu_es_centers[:, 0], imu_es_centers[:, 1], marker='x', color='red')
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    # plt.title("")
     plt.legend()
     plt.show()
 
