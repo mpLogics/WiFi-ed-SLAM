@@ -45,7 +45,7 @@ class PFLocalization:
         self.calib_ang = np.array([0.0, 0.0, 0.0])
 
         # open the file in the write mode
-        self.f = open('data/pose_imu_pf.csv', 'w', newline='')
+        self.f = open('pose_imu_pf.csv', 'w', newline='')
         self.writer = csv.writer(self.f)
 
         self.real_time = False
@@ -96,18 +96,23 @@ class PFLocalization:
         pred_mean, pred_cov = self.get_pose()
 
         # Compute the mean and covariance of the Wi-Fi signals
-        wifi_centers, wifi_covs = gmm_extr(self.interp_xi, self.interp_yi, self.interp_zi, self.local_max_num, threshold=0.55)
+        # wifi_centers, wifi_covs = gmm_extr(self.interp_xi, self.interp_yi, self.interp_zi, self.local_max_num, threshold=0.55)
 
         # Find the nearest Wi-Fi signal to the predicted mean of the particles
-        current_min_dist = 1e7
+        # current_min_dist = 1e7
         nearest_mode_mean = np.zeros(2)
-        nearest_mode_cov = np.zeros([2, 2])
-        for i in range(len(wifi_centers)):
-            dist = np.linalg.norm([pred_mean[0] - wifi_centers[i][0], pred_mean[1] - wifi_centers[i][1]])
-            if dist < current_min_dist:
-                current_min_dist = dist
-                nearest_mode_mean = np.array(wifi_centers[i]).reshape(1, 2)
-                nearest_mode_cov = np.array(wifi_covs[i])
+        max_index = np.unravel_index(np.argmax(self.interp_zi), self.interp_zi.shape)
+        nearest_mode_mean[0] = self.interp_xi[max_index[1]]
+        nearest_mode_mean[1] = self.interp_yi[max_index[0]]
+        # print(nearest_mode_mean)
+        
+        # nearest_mode_cov = np.zeros([2, 2])
+        # for i in range(len(wifi_centers)):
+        #     dist = np.linalg.norm([pred_mean[0] - wifi_centers[i][0], pred_mean[1] - wifi_centers[i][1]])
+        #     if dist < current_min_dist:
+        #         current_min_dist = dist
+        #         nearest_mode_mean = np.array(wifi_centers[i]).reshape(1, 2)
+        #         nearest_mode_cov = np.array(wifi_covs[i])
 
         # Update the weight of each particle based on its distance to the nearest Wi-Fi signal
         for i in range(len(self.particles)):
@@ -119,8 +124,8 @@ class PFLocalization:
             likelihood = np.exp(-0.5*distance**2 / 0.5)
             self.weights[i] *= likelihood
     
-            wifi_contribution = np.array([0.2 * (nearest_mode_mean - self.particles[i, 0:2])]).reshape(2,)
-            predicted_mean_contribution = np.array([0.8 * (pred_mean[0:2] - self.particles[i, 0:2])]).reshape(2,)
+            wifi_contribution = np.array([0.25 * (nearest_mode_mean - self.particles[i, 0:2])]).reshape(2,)
+            predicted_mean_contribution = np.array([0.75 * (pred_mean[0:2] - self.particles[i, 0:2])]).reshape(2,)
             # self.particles[i, 0:2] += wifi_contribution + predicted_mean_contribution
 
         # Resample the particles based on the updated weights
@@ -129,14 +134,16 @@ class PFLocalization:
             self.weights /= np.sum(self.weights)
         else:
             self.weights[:] = 1.0 / self.N
+        
+        self.resample(wifi_contribution + predicted_mean_contribution)
 
         # # resample
         # # Compute effective number of particles
-        neff = 1 / np.sum(np.square(self.weights))
+        # neff = 1 / np.sum(np.square(self.weights))
 
-        # Resample only if neff is below a threshold
-        if neff < self.N / 5:
-            self.resample(wifi_contribution + predicted_mean_contribution)
+        # # Resample only if neff is below a threshold
+        # if neff < self.N / 2:
+        #     self.resample(wifi_contribution + predicted_mean_contribution)
 
     
     def get_pose(self):
@@ -253,7 +260,7 @@ class PFLocalization:
             mean, cov = self.get_pose()
             print(mean)
             self.mean = np.vstack([self.mean, mean])
-            self.plot()
+            # self.plot()
             # print(cov)
             # self.writer.writerow([float(sensor_data[0]), float(sensor_data[1]), float(sensor_data[2]), float(sensor_data[3]), float(sensor_data[4]), float(sensor_data[5]), float(sensor_data[6])])
             self.writer.writerow([float(sensor_data[0]), mean[0], mean[1], mean[2], cov[0][0], cov[0][1], cov[0][2], cov[1][0], cov[1][1], cov[1][2], cov[2][0], cov[2][1], cov[2][2]])
@@ -266,7 +273,7 @@ class PFLocalization:
 if __name__ == "__main__":
     pfLoc = PFLocalization()
     # read ground truth data
-    with open("data/continuous_gt_1.csv", mode ='r', newline='') as file:
+    with open("continuous_gt_1.csv", mode ='r', newline='') as file:
         csvFile = csv.reader(file)
         for lines in csvFile:
             pfLoc.gt_x = np.append(pfLoc.gt_x, float(lines[1]))
@@ -281,7 +288,7 @@ if __name__ == "__main__":
     pfLoc.rightY = max(pfLoc.gt_y)
 
     # predicted mean for plotting
-    with open("data/predict_real.csv", mode ='r', newline='') as file:
+    with open("predict_real.csv", mode ='r', newline='') as file:
         csvFile = csv.reader(file)
         for lines in csvFile:
             mean = np.array([float(lines[1]), float(lines[2]), float(lines[3])])
