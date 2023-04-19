@@ -3,12 +3,11 @@ import csv
 import numpy as np
 
 # open the file in the write mode
-f = open('simulated_imu.csv', 'w', newline='')
+f = open('data/simulated_imu.csv', 'w', newline='')
 writer = csv.writer(f)
-
+writer.writerow([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 def turn(right):
     total_elapsed = 0.1
-    writer.writerow([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     while total_elapsed < 1.0:
         start_time = time.time() # Get the current time before processing
         rotate = np.pi/2
