@@ -9,3 +9,5 @@ simulate_imu.py -> This file can be run to simulate the IMU data for a given pat
 
 imu_odom_loc_pf.py -> This file has the implementation of our Particle Filter this can take the simulated data as input to predict the state. But, It requires a ground truth file to simulate WiFI to update the prediction.
 
+idw_interpolation.py -> This file has the implementation of creating RSSI possibility map alone ground truth points, with Inverse Distance Weighting interpolation, and eventually updated map with Kalman Filter.
+
