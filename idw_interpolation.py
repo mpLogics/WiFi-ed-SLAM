@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from sklearn.mixture import GaussianMixture
 import csv
-import simulate_imu
 
 def idw_interpolation(x, y, xi, yi, avg_signal_strengths, p=2):
     """

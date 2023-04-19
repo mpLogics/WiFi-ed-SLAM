@@ -45,7 +45,7 @@ class PFLocalization:
         self.calib_ang = np.array([0.0, 0.0, 0.0])
 
         # open the file in the write mode
-        self.f = open('pose_imu_pf.csv', 'w', newline='')
+        self.f = open('data/pose_imu_pf.csv', 'w', newline='')
         self.writer = csv.writer(self.f)
 
         self.real_time = False
@@ -273,7 +273,7 @@ class PFLocalization:
 if __name__ == "__main__":
     pfLoc = PFLocalization()
     # read ground truth data
-    with open("continuous_gt_1.csv", mode ='r', newline='') as file:
+    with open("data/continuous_gt_1.csv", mode ='r', newline='') as file:
         csvFile = csv.reader(file)
         for lines in csvFile:
             pfLoc.gt_x = np.append(pfLoc.gt_x, float(lines[1]))
@@ -288,7 +288,7 @@ if __name__ == "__main__":
     pfLoc.rightY = max(pfLoc.gt_y)
 
     # predicted mean for plotting
-    with open("predict_real.csv", mode ='r', newline='') as file:
+    with open("data/predict_real.csv", mode ='r', newline='') as file:
         csvFile = csv.reader(file)
         for lines in csvFile:
             mean = np.array([float(lines[1]), float(lines[2]), float(lines[3])])
