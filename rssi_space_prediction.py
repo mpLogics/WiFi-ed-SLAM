@@ -9,17 +9,6 @@ from preprocessing import FilteredData
 
 import seaborn as sns
 from fitter import Fitter, get_common_distributions, get_distributions
-
-
-class CustomLoss(nn.Module):
-    def __init__(self):
-        super(CustomLoss,self).__init__()
-    
-    def forward(self,y_val,num_spatial_points):    
-        y_val = y_val.repeat(1,num_spatial_points)
-        mean_squared = torch.nn.MSELoss()
-        loss = -mean_squared(y_val,y_val.t())
-        return loss
     
 class Classifier(nn.Module):
     def __init__(self,in_features=64,num_classes=24,hidden_dims=1):
@@ -44,12 +33,12 @@ class Encoder(nn.Module):
         self.hidden_dims = hidden_dims
         self.in_features = in_features
         self.fc1 = nn.Linear(in_features=self.in_features,out_features=200)
-        self.fc2 = nn.Linear(in_features=200,out_features=100)
-        self.fc3 = nn.Linear(in_features=100,out_features=50)
-        self.fc4 = nn.Linear(in_features=50,out_features=100)
-        self.fc5 = nn.Linear(in_features=100,out_features=150)
-        self.fc6 = nn.Linear(in_features=150,out_features=200)
-        self.fc_final = nn.Linear(in_features=200,out_features=48)
+        self.fc2 = nn.Linear(in_features=200,out_features=128)
+        #self.fc3 = nn.Linear(in_features=100,out_features=50)
+        #self.fc4 = nn.Linear(in_features=50,out_features=100)
+        #self.fc5 = nn.Linear(in_features=100,out_features=150)
+        #self.fc6 = nn.Linear(in_features=150,out_features=200)
+        self.fc_final = nn.Linear(in_features=128,out_features=num_classes)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
         self.model = nn.Sequential(
@@ -57,14 +46,14 @@ class Encoder(nn.Module):
             self.relu,
             self.fc2,
             self.relu,
-            self.fc3,
-            self.relu,
-            self.fc4,
-            self.relu,
-            self.fc5,
-            self.relu,
-            self.fc6,
-            self.relu,
+            #self.fc3,
+            #self.relu,
+            #self.fc4,
+            #self.relu,
+            #self.fc5,
+            #self.relu,
+            #self.fc6,
+            #self.relu,
             self.fc_final,)
             #self.softmax)
     
@@ -102,8 +91,7 @@ for coord in coordinates:
 total_mac_address = len(consistent_mac_address)
 
 train_data = torch.empty(0,total_mac_address + 1)
-# x = torch.empty(0,total_mac_address)
-# y = torch.empty((0,NUM_POINTS_IN_SPACE))
+
 for coord in coordinates:
     x_temp = torch.empty((0,max_reading_len))
     for mac_address in consistent_mac_address:
@@ -143,8 +131,8 @@ class CustomLoss(nn.Module):
     
 def batched_training(model,train_loader,optimizer,loss_class,batch_size):
     train_loss = 0.
-    batched_predicted_coords = torch.empty((0,48))
-    batched_labels = torch.empty(48)
+    batched_predicted_coords = torch.empty((0,64))
+    batched_labels = torch.empty(64)
     
     for batch_idx, data in enumerate(train_loader):
         
@@ -231,75 +219,49 @@ if __name__=='__main__':
     classifying_model = Classifier()
     out = encoding_model(train_data[:,:343]).detach().numpy()
     
-    #fig,ax = plt.subplots(nrows=6,ncols=4)
-    #plt.tight_layout()
-    j = 0
-    plt.figure()
-    plt.imshow(out[(train_data[:,343:]==1).reshape(-1)])
-    #plt.show()
-    '''
-    for row in range(6):
-        for col in range(4):
-            ax[row][col].set_title(j)
-            ax[row][col].axis('off')
-            ax[row][col].imshow(out[(train_data[:,343:]==j).reshape(-1)])
-
-            j+=1
-    plt.show()
-    '''
+    train_losses_classifier_wo = train_model(
+        encoder = encoding_model,
+        classifier = classifying_model,
+        lr = 0.01,
+        num_epochs=2000,
+        train_loader=train_classification_loader,training='classifier')
+    
     train_losses_encoder = train_model(
         encoder = encoding_model,
-        num_epochs=1500,
+        num_epochs=1000,
         train_loader=train_classification_loader,training='encoder')
     
-    plt.figure()
-    plt.imshow(out[(train_data[:,343:]==1).reshape(-1)])
-    plt.show()
+    #plt.figure()
+    #plt.imshow(out[(train_data[:,343:]==1).reshape(-1)])
+    #plt.show()
     # Training the model for classification
+    classifying_model = Classifier()
+    train_losses_classifier = train_model(
+        encoder = encoding_model,
+        classifier = classifying_model,
+        lr = 0.01,
+        num_epochs=2000,
+        train_loader=train_classification_loader,training='classifier')
 
-    #train_losses_classifier = train_model(
-    #    encoder = encoding_model,
-    #    classifier = classifying_model,
-    #    lr = 0.01,
-    #    num_epochs=3000,
-    #    train_loader=train_classification_loader,training='classifier')
-
-    '''
-    out = encoding_model(train_data[:,:343]).detach().numpy()
-    fig,ax = plt.subplots(nrows=6,ncols=4)
-    plt.tight_layout(pad=1.2)
-    j = 0
-    for row in range(6):
-        for col in range(4):
-            ax[row][col].set_title(j)
-            ax[row][col].imshow(out[(train_data[:,343:]==j).reshape(-1)])
-            j+=1
-    plt.show()
-    '''
-        
-    #plt.figure()
-    #plt.imshow()
-        
-    
-    #plt.figure()
-    #plt.imshow(out.T)
-
-    '''
+    #'''
 
     plt.figure()
     plt.plot(train_losses_encoder)
     plt.title('Contrastive Loss for the Encoder')
     plt.xlabel('Number of Epochs')
     plt.ylabel('Loss value')
+    plt.show()
     
     plt.figure()
-    plt.plot(train_losses_classifier)
+    plt.plot(train_losses_classifier_wo,label='Without CLS')
+    plt.plot(train_losses_classifier,label='With CLS')
     plt.title('Cross Entropy Loss for classification')
     plt.xlabel('Number of Epochs')
     plt.ylabel('Loss Value')
-    '''
-    
-    
+    plt.legend()
+    plt.show()
+    #'''
+        
 
     torch.save(encoding_model.state_dict(), r'encoder.pth')
     torch.save(classifying_model.state_dict(), r'classifier.pth')
